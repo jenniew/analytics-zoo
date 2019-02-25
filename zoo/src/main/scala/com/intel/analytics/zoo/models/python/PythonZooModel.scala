@@ -326,13 +326,13 @@ class PythonZooModel[T: ClassTag](implicit ev: TensorNumeric[T]) extends PythonZ
     new MeanAveragePrecision(use07metric, normalized, classes.asScala.toArray)
   }
 
-  def createFrcnnCriterion(rpnSigma: Float = 3, frcnnSigma: Float = 1,
-                           ignoreLabel: Int = -1, rpnLossClsWeight: Float = 1,
-                           rpnLossBboxWeight: Float = 1,
-                           lossClsWeight: Float = 1,
-                           lossBboxWeight: Float = 1): FrcnnCriterion = {
-    new FrcnnCriterion(rpnSigma, frcnnSigma, Some(ignoreLabel), rpnLossClsWeight, rpnLossBboxWeight,
-      lossClsWeight, lossBboxWeight)
+  def createFrcnnCriterion(rpnSigma: Double = 3, frcnnSigma: Double = 1,
+                           ignoreLabel: Int = -1, rpnLossClsWeight: Double = 1,
+                           rpnLossBboxWeight: Double = 1,
+                           lossClsWeight: Double = 1,
+                           lossBboxWeight: Double = 1): FrcnnCriterion = {
+    new FrcnnCriterion(rpnSigma.toFloat, frcnnSigma.toFloat, Some(ignoreLabel), rpnLossClsWeight.toFloat,
+      rpnLossBboxWeight.toFloat, lossClsWeight.toFloat, lossBboxWeight.toFloat)
   }
 
   def createMultiBoxLoss(param: MultiBoxLossParam): MultiBoxLoss[T] = {

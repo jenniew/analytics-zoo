@@ -199,8 +199,8 @@ class FrcnnCriterion(Criterion):
     >>> criterion = FrcnnCriterion()
     creating: createFrcnnCriterion
     """
-    def __init__(self, rpn_sigma=3, frcnn_sigma=1, ignore_label=-1,rpn_loss_cls_weight=1,
-                 rpn_loss_bbox_weight=1, loss_cls_weight=1, loss_bbox_weight=1,
+    def __init__(self, rpn_sigma=3.0, frcnn_sigma=1.0, ignore_label=-1,rpn_loss_cls_weight=1.0,
+                 rpn_loss_bbox_weight=1.0, loss_cls_weight=1.0, loss_bbox_weight=1.0,
                  bigdl_type="float"):
         super(FrcnnCriterion, self).__init__(None, bigdl_type, rpn_sigma, frcnn_sigma,
                                              ignore_label, rpn_loss_cls_weight,
