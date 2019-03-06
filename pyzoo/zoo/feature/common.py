@@ -17,6 +17,7 @@
 import sys
 
 from bigdl.util.common import *
+from bigdl.dataset.dataset import DataSet
 
 if sys.version >= '3':
     long = int
@@ -211,7 +212,7 @@ class ToTuple(Preprocessing):
         super(ToTuple, self).__init__(bigdl_type)
 
 
-class BigDLDataSet(JavaValue):
+class BigDLDataSet(DataSet):
     def __init__(self, jvalue=None, bigdl_type="float"):
         self.bigdl_type = bigdl_type
         if jvalue:
