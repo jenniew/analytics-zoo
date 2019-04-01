@@ -16,7 +16,7 @@
 
 package com.intel.analytics.zoo.feature.text
 
-import java.io.File
+import java.io._
 import java.util
 
 import com.intel.analytics.bigdl.DataSet
@@ -30,11 +30,11 @@ import org.apache.log4j.Logger
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 
-import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.{ArrayBuffer, Map => MMap}
 import scala.io.Source
-import java.io.PrintWriter
-
 import com.intel.analytics.bigdl.tensor.Tensor
+import com.intel.analytics.zoo.feature.FeatureSet
+import com.intel.analytics.zoo.feature.pmem.{DRAM, MemoryType}
 import org.apache.spark.sql.SQLContext
 
 /**
@@ -109,11 +109,17 @@ abstract class TextSet {
 
   /**
    * Map word tokens to indices.
-   * Result index will start from 1 and corresponds to the occurrence frequency of each word
-   * sorted in descending order.
-   * Need to tokenize first.
-   * See [[WordIndexer]] for more details.
+   * Important: Take care that this method behaves a bit differently for training and inference.
+   *
+   * ---------------------------------------Training--------------------------------------------
+   * During the training, you need to generate a new wordIndex map according to the texts you are
+   * dealing with. Thus this method will first do the map generation and then convert words to
+   * indices based on the generated map.
+   * You can specify the following arguments which poses some constraints when generating the map.
+   * In the result map, index will start from 1 and corresponds to the occurrence frequency of
+   * each word sorted in descending order.
    * After word2idx, you can get the generated wordIndex map by calling 'getWordIndex'.
+   * Also, you can call `saveWordIndex` to save this wordIndex map to be used in future training.
    *
    * @param removeTopN Non-negative integer. Remove the topN words with highest frequencies in
    *                   the case where those are treated as stopwords.
@@ -127,6 +133,15 @@ abstract class TextSet {
    *                    map with index starting from 1 will be generated.
    *                    If not null, then the generated map will preserve the word index in
    *                    existingMap and assign subsequent indices to new words.
+   *
+   * ---------------------------------------Inference--------------------------------------------
+   * During the inference, you are supposed to use exactly the same wordIndex map in the training
+   * stage instead of generating a new one.
+   * Thus please be aware that you do not need to specify any of the above arguments.
+   * You need to call `loadWordIndex` or `setWordIndex` beforehand for map loading.
+   *
+   * Need to tokenize first.
+   * See [[WordIndexer]] for more details.
    */
   def word2idx(
       removeTopN: Int = 0,
@@ -134,7 +149,7 @@ abstract class TextSet {
       minFreq: Int = 1,
       existingMap: Map[String, Int] = null): TextSet = {
     if (wordIndex != null) {
-      logger.warn("wordIndex already exists. Using the existing wordIndex")
+      logger.info("Using the existing wordIndex for transformation")
     } else {
       generateWordIndexMap(removeTopN, maxWordsNum, minFreq, existingMap)
     }
@@ -182,31 +197,49 @@ abstract class TextSet {
    */
   def getWordIndex: Map[String, Int] = wordIndex
 
-  def setWordIndex(map: Map[String, Int]): this.type = {
-    wordIndex = map
+  /**
+   * Assign a wordIndex map for this TextSet to use during word2idx.
+   * If you load the wordIndex from the saved file, you are recommended to use `loadWordIndex`
+   * directly.
+   *
+   * @param vocab Map of each word (String) and its index (integer).
+   */
+  def setWordIndex(vocab: Map[String, Int]): this.type = {
+    wordIndex = vocab
     this
   }
 
   /**
-   * Save wordIndex map to local text file, which may be used for inference.
-   * Each line will be "word id".
+   * Save wordIndex map to text file, which can be used for future inference.
+   * Each separate line will be "word id".
    *
-   * @param path Local text file path.
+   * For LocalTextSet, save txt to a local file system.
+   * For DistributedTextSet, save txt to a local or distributed file system (such as HDFS).
+   *
+   * @param path The path to the text file.
    */
   def saveWordIndex(path: String): Unit = {
     if (wordIndex == null) {
-      logger.warn("wordIndex is null, please transform from word to index first")
-    }
-    else {
-      val pw = new PrintWriter(new File(path))
-      for (item <- wordIndex) {
-        pw.print(item._1)
-        pw.print(" ")
-        pw.println(item._2)
-      }
-      pw.close()
+      throw new Exception("wordIndex is null, nothing to save. " +
+        "Please transform from word to index first")
     }
   }
+
+  /**
+   * Load the wordIndex map which was saved after the training, so that this TextSet can
+   * directly use this wordIndex during inference.
+   * Each separate line should be "word id".
+   *
+   * Note that after calling `loadWordIndex`, you do not need to specify any argument when calling
+   * `word2idx` in the preprocessing pipeline as now you are using exactly the loaded wordIndex for
+   * transformation.
+   *
+   * For LocalTextSet, load txt from a local file system.
+   * For DistributedTextSet, load txt from a local or distributed file system (such as HDFS).
+   *
+   * @param path The path to the text file.
+   */
+  def loadWordIndex(path: String): TextSet
 }
 
 
@@ -224,8 +257,8 @@ object TextSet {
   /**
    * Create a DistributedTextSet from RDD of TextFeature.
    */
-  def rdd(data: RDD[TextFeature]): DistributedTextSet = {
-    new DistributedTextSet(data)
+  def rdd(data: RDD[TextFeature], memoryType: MemoryType = DRAM): DistributedTextSet = {
+    new DistributedTextSet(data, memoryType)
   }
 
   /**
@@ -243,8 +276,9 @@ object TextSet {
    * All texts will be given a label according to the subdirectory where it is located.
    * Labels start from 0.
    *
-   * @param path The folder path to texts. Local file system and HDFS are supported.
-   *             If you want to read from HDFS, sc needs to be specified.
+   * @param path The folder path to texts. Local or distributed file system (such as HDFS)
+   *             are supported. If you want to read from a distributed file system, sc
+   *             needs to be specified.
    * @param sc An instance of SparkContext.
    *           If specified, texts will be read as a DistributedTextSet.
    *           Default is null and in this case texts will be read as a LocalTextSet.
@@ -297,8 +331,9 @@ object TextSet {
    * Each record is supposed to contain the following two fields in order:
    * id(String) and text(String).
    *
-   * @param path The path to the csv file. Local file system and HDFS are supported.
-   *             If you want to read from HDFS, sc needs to be specified.
+   * @param path The path to the csv file. Local or distributed file system (such as HDFS)
+   *             are supported. If you want to read from a distributed file system, sc
+   *             needs to be specified.
    * @param sc An instance of SparkContext.
    *           If specified, texts will be read as a DistributedTextSet.
    *           Default is null and in this case texts will be read as a LocalTextSet.
@@ -363,7 +398,8 @@ object TextSet {
   def fromRelationPairs(
       relations: RDD[Relation],
       corpus1: TextSet,
-      corpus2: TextSet): DistributedTextSet = {
+      corpus2: TextSet,
+      memoryType: MemoryType = DRAM): DistributedTextSet = {
     val pairsRDD = Relations.generateRelationPairs(relations)
     require(corpus1.isDistributed, "corpus1 must be a DistributedTextSet")
     require(corpus2.isDistributed, "corpus2 must be a DistributedTextSet")
@@ -390,8 +426,57 @@ object TextSet {
       val label = Tensor(Array(1.0f, 0.0f), Array(2, 1))
       textFeature(TextFeature.sample) = Sample(feature, label)
       textFeature
+    }).setName("Pairwise Training Set")
+    TextSet.rdd(res, memoryType)
+  }
+
+  /**
+   * Generate a TextSet for pairwise training using Relation array.
+   *
+   * @param relations Array of [[Relation]].
+   * @param corpus1 LocalTextSet that contains all [[Relation.id1]]. For each TextFeature
+   *                in corpus1, text must have been transformed to indexedTokens of the same length.
+   * @param corpus2 LocalTextSet that contains all [[Relation.id2]]. For each TextFeature
+   *                in corpus2, text must have been transformed to indexedTokens of the same length.
+   * @return LocalTextSet.
+   */
+  def fromRelationPairs(
+      relations: Array[Relation],
+      corpus1: TextSet,
+      corpus2: TextSet): LocalTextSet = {
+    val pairsArray = Relations.generateRelationPairs(relations)
+    require(corpus1.isLocal, "corpus1 must be a LocalTextSet")
+    require(corpus2.isLocal, "corpus2 must be a LocalTextSet")
+    val mapText1: MMap[String, Array[Float]] = MMap()
+    val mapText2: MMap[String, Array[Float]] = MMap()
+    val arrayText1 = corpus1.toLocal().array
+    val arrayText2 = corpus2.toLocal().array
+    for (text <- arrayText1) {
+      val indices = text.getIndices
+      require(indices != null,
+        "corpus1 haven't been transformed from word to index yet, please word2idx first")
+      mapText1(text.getURI) = indices
+    }
+    for (text <- arrayText2) {
+      val indices = text.getIndices
+      require(indices != null,
+        "corpus2 haven't been transformed from word to index yet, please word2idx first")
+      mapText2(text.getURI) = indices
+    }
+    val res = pairsArray.map(x => {
+      val indices1 = mapText1(x.id1)
+      val indices2Pos = mapText2(x.id2Positive)
+      val indices2Neg = mapText2(x.id2Negative)
+      require(indices2Neg.length == indices2Pos.length,
+        "corpus2 contains texts with different lengths, please shapeSequence first")
+      val textFeature = TextFeature(null, x.id1 + x.id2Positive + x.id2Negative)
+      val pairedIndices = indices1 ++ indices2Pos ++ indices1 ++ indices2Neg
+      val feature = Tensor(pairedIndices, Array(2, indices1.length + indices2Pos.length))
+      val label = Tensor(Array(1.0f, 0.0f), Array(2, 1))
+      textFeature(TextFeature.sample) = Sample(feature, label)
+      textFeature
     })
-    TextSet.rdd(res)
+    TextSet.array(res)
   }
 
   /**
@@ -443,8 +528,68 @@ object TextSet {
       val label = Tensor(x.map(_._3.toFloat), Array(text2Array.length, 1))
       textFeature(TextFeature.sample) = Sample(feature, label)
       textFeature
-    })
+    }).setName("Listwise Evaluation Set")
     TextSet.rdd(res)
+  }
+
+  /**
+   * Generate a TextSet for ranking using Relation array.
+   *
+   * @param relations Array of [[Relation]].
+   * @param corpus1 LocalTextSet that contains all [[Relation.id1]]. For each TextFeature
+   *                in corpus1, text must have been transformed to indexedTokens of the same length.
+   * @param corpus2 LocalTextSet that contains all [[Relation.id2]]. For each TextFeature
+   *                in corpus2, text must have been transformed to indexedTokens of the same length.
+   * @return LocalTextSet.
+   */
+  def fromRelationLists(
+      relations: Array[Relation],
+      corpus1: TextSet,
+      corpus2: TextSet): LocalTextSet = {
+    require(corpus1.isLocal, "corpus1 must be a LocalTextSet")
+    require(corpus2.isLocal, "corpus2 must be a LocalTextSet")
+    val mapText1: MMap[String, Array[Float]] = MMap()
+    val mapText2: MMap[String, Array[Float]] = MMap()
+    val arrayText1 = corpus1.toLocal().array
+    val arrayText2 = corpus2.toLocal().array
+    for (text <- arrayText1) {
+      val indices = text.getIndices
+      require(indices != null,
+        "corpus1 haven't been transformed from word to index yet, please word2idx first")
+      mapText1(text.getURI) = indices
+    }
+    for (text <- arrayText2) {
+      val indices = text.getIndices
+      require(indices != null,
+        "corpus2 haven't been transformed from word to index yet, please word2idx first")
+      mapText2(text.getURI) = indices
+    }
+    val text1Map: MMap[String, ArrayBuffer[(String, Int)]] = MMap()
+    for (rel <- relations) {
+      if (! text1Map.contains(rel.id1)) {
+        val id2Array: ArrayBuffer[(String, Int)] = ArrayBuffer()
+        id2Array.append((rel.id2, rel.label))
+        text1Map(rel.id1) = id2Array
+      }
+      else {
+        val id2Array = text1Map(rel.id1)
+        id2Array.append((rel.id2, rel.label))
+      }
+    }
+    val features: ArrayBuffer[TextFeature] = ArrayBuffer()
+    for((id1, id2LabelArray) <- text1Map) {
+      val id2ArrayLength = id2LabelArray.length
+      val textFeature = TextFeature(null, uri = id1 ++ id2LabelArray.map(_._1).mkString(""))
+      val indices2Array = id2LabelArray.map(x => {mapText2(x._1.toString)})
+      val indices1 = mapText1(id1)
+      val data = indices2Array.flatMap(indices1 ++ _).toArray
+      val feature = Tensor(data,
+        Array(id2ArrayLength, indices1.length + indices2Array.head.length))
+      val label = Tensor(id2LabelArray.toArray.map(_._2.toFloat), Array(id2ArrayLength, 1))
+      textFeature(TextFeature.sample) = Sample(feature, label)
+      features.append(textFeature)
+    }
+    TextSet.array(features.toArray)
   }
 
   /**
@@ -455,7 +600,7 @@ object TextSet {
    *                    map with index starting from 1 will be generated.
    *                    If not null, then the generated map will preserve the word index in
    *                    existingMap and assign subsequent indices to new words.
-   * @return WordIndex map.
+   * @return wordIndex map.
    */
   def wordsToMap(words: Array[String], existingMap: Map[String, Int] = null): Map[String, Int] = {
     if (existingMap == null) {
@@ -537,13 +682,34 @@ class LocalTextSet(var array: Array[TextFeature]) extends TextSet {
     setWordIndex(wordIndex)
     wordIndex
   }
+
+  override def saveWordIndex(path: String): Unit = {
+    super.saveWordIndex(path)
+    val pw = new PrintWriter(new File(path))
+    for (item <- getWordIndex) {
+      pw.print(item._1)
+      pw.print(" ")
+      pw.println(item._2)
+    }
+    pw.close()
+  }
+
+  override def loadWordIndex(path: String): TextSet = {
+    val wordIndex = MMap[String, Int]()
+    for (line <- Source.fromFile(path).getLines) {
+      val values = line.split(" ")
+      wordIndex.put(values(0), values(1).toInt)
+    }
+    setWordIndex(wordIndex.toMap)
+  }
 }
 
 
 /**
  * DistributedTextSet is comprised of RDD of TextFeature.
  */
-class DistributedTextSet(var rdd: RDD[TextFeature]) extends TextSet {
+class DistributedTextSet(var rdd: RDD[TextFeature],
+                         memoryType: MemoryType = DRAM) extends TextSet {
 
   override def transform(transformer: Preprocessing[TextFeature, TextFeature]): TextSet = {
     rdd = transformer(rdd)
@@ -563,11 +729,13 @@ class DistributedTextSet(var rdd: RDD[TextFeature]) extends TextSet {
   }
 
   override def toDataSet: DataSet[Sample[Float]] = {
-    DataSet.rdd(rdd.map(_[Sample[Float]](TextFeature.sample)))
+    FeatureSet.rdd(rdd.map(_[Sample[Float]](TextFeature.sample))
+      .setName(s"Samples in ${rdd.name}"),
+      memoryType)
   }
 
   override def randomSplit(weights: Array[Double]): Array[TextSet] = {
-    rdd.randomSplit(weights).map(TextSet.rdd)
+    rdd.randomSplit(weights).map(v => TextSet.rdd(v, this.memoryType))
   }
 
   override def generateWordIndexMap(
@@ -598,5 +766,28 @@ class DistributedTextSet(var rdd: RDD[TextFeature]) extends TextSet {
     val wordIndex = TextSet.wordsToMap(words, existingMap)
     setWordIndex(wordIndex)
     wordIndex
+  }
+
+  override def saveWordIndex(path: String): Unit = {
+    super.saveWordIndex(path)
+    val fs = FileSystem.get(rdd.sparkContext.hadoopConfiguration)
+    val os = new BufferedOutputStream(fs.create(new Path(path)))
+    for (item <- getWordIndex) {
+      os.write((item._1 + " " + item._2 + "\n").getBytes("UTF-8"))
+    }
+    os.close()
+  }
+
+  override def loadWordIndex(path: String): TextSet = {
+    val fs = FileSystem.get(rdd.sparkContext.hadoopConfiguration)
+    val br = new BufferedReader(new InputStreamReader(fs.open(new Path(path))))
+    val wordIndex = MMap[String, Int]()
+    var line = br.readLine()
+    while (line != null) {
+      val values = line.split(" ")
+      wordIndex.put(values(0), values(1).toInt)
+      line = br.readLine()
+    }
+    setWordIndex(wordIndex.toMap)
   }
 }

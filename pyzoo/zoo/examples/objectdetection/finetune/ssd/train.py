@@ -96,9 +96,6 @@ def train(args):
                                             RoiImageToSSDBatch(args.batch_size)])
     val_set = FeatureSet.rdd(val_data).transform(val_transformer)
 
-    # prepare pre and post params
-    # pre_param_val = PreProcessParam(args.batch_size, n_partition=args.batch_size)
-
     # load pretrained model
     model = SSDVGG(len(class_names), args.resolution, args.dataset)
     pretrained = ImageModel._do_load(args.model_snapshot)

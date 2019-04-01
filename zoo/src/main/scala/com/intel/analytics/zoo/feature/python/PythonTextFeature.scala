@@ -26,7 +26,6 @@ import com.intel.analytics.zoo.common.PythonZoo
 import com.intel.analytics.zoo.feature.common.{Preprocessing, Relation, Relations}
 import com.intel.analytics.zoo.feature.text.TruncMode.TruncMode
 import com.intel.analytics.zoo.feature.text.{DistributedTextSet, _}
-import com.intel.analytics.zoo.models.common.Ranker
 import org.apache.spark.api.java.{JavaRDD, JavaSparkContext}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SQLContext
@@ -99,8 +98,8 @@ class PythonTextFeature[T: ClassTag](implicit ev: TensorNumeric[T]) extends Pyth
     Normalizer()
   }
 
-  def createWordIndexer(map: JMap[String, Int]): WordIndexer = {
-    WordIndexer(if (map != null) map.asScala.toMap else null)
+  def createWordIndexer(vocab: JMap[String, Int]): WordIndexer = {
+    WordIndexer(if (vocab != null) vocab.asScala.toMap else null)
   }
 
   def createSequenceShaper(
@@ -260,6 +259,12 @@ class PythonTextFeature[T: ClassTag](implicit ev: TensorNumeric[T]) extends Pyth
     textSet.randomSplit(weights.asScala.toArray).toList.asJava
   }
 
+  def textSetSetWordIndex(
+      textSet: TextSet,
+      vocab: JMap[String, Int]): TextSet = {
+    textSet.setWordIndex(if (vocab != null) vocab.asScala.toMap else null)
+  }
+
   def textSetTokenize(textSet: TextSet): TextSet = {
     textSet.tokenize()
   }
@@ -314,6 +319,14 @@ class PythonTextFeature[T: ClassTag](implicit ev: TensorNumeric[T]) extends Pyth
     })
   }
 
+  private def toScalaRelations(relations: JList[JList[Any]]): Array[Relation] = {
+    relations.asScala.toArray.map(relation => {
+      val x = relation.asScala.toArray
+      require(x.length == 3, "Relation should consist of id1, id2 and label")
+      Relation(x(0).asInstanceOf[String], x(1).asInstanceOf[String], x(2).asInstanceOf[Int])
+    })
+  }
+
   private def toPythonRelations(relations: RDD[Relation]): JavaRDD[JList[Any]] = {
     relations.map(x =>
       List(x.id1, x.id2, x.label).asJava).toJavaRDD()
@@ -349,10 +362,24 @@ class PythonTextFeature[T: ClassTag](implicit ev: TensorNumeric[T]) extends Pyth
     TextSet.fromRelationPairs(toScalaRelations(relations), corpus1, corpus2)
   }
 
+  def textSetFromRelationPairs(
+      relations: JList[JList[Any]],
+      corpus1: TextSet,
+      corpus2: TextSet): LocalTextSet = {
+    TextSet.fromRelationPairs(toScalaRelations(relations), corpus1, corpus2)
+  }
+
   def textSetFromRelationLists(
       relations: JavaRDD[Array[Object]],
       corpus1: TextSet,
       corpus2: TextSet): DistributedTextSet = {
+    TextSet.fromRelationLists(toScalaRelations(relations), corpus1, corpus2)
+  }
+
+  def textSetFromRelationLists(
+      relations: JList[JList[Any]],
+      corpus1: TextSet,
+      corpus2: TextSet): LocalTextSet = {
     TextSet.fromRelationLists(toScalaRelations(relations), corpus1, corpus2)
   }
 
@@ -376,6 +403,12 @@ class PythonTextFeature[T: ClassTag](implicit ev: TensorNumeric[T]) extends Pyth
       textSet: TextSet,
       path: String): Unit = {
     textSet.saveWordIndex(path)
+  }
+
+  def textSetLoadWordIndex(
+      textSet: TextSet,
+      path: String): TextSet = {
+    textSet.loadWordIndex(path)
   }
 
 }
