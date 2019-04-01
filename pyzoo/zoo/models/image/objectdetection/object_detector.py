@@ -155,7 +155,7 @@ class RoiRecordToFeature(Preprocessing):
         super(RoiRecordToFeature, self).__init__(bigdl_type, convert_label, out_key)
 
 
-class RoiImageToBatch(Preprocessing):
+class RoiImageToSSDBatch(Preprocessing):
     """
     Convert a batch of labeled BGR images into a Mini-batch.
 
@@ -164,7 +164,7 @@ class RoiImageToBatch(Preprocessing):
     """
     def __init__(self, total_batch, convert_label=True, partition_num=None,
                  keep_image_feature=True, input_key="floats", bigdl_type="float"):
-        super(RoiImageToBatch, self).__init__(bigdl_type, total_batch, convert_label,
+        super(RoiImageToSSDBatch, self).__init__(bigdl_type, total_batch, convert_label,
                                               partition_num, keep_image_feature, input_key)
 
 
@@ -375,3 +375,33 @@ def load_roi_seq_files(url, sc, partition_num=-1):
     Load roi sequence files to image frame
     """
     return callBigDlFunc("float", "loadRoiSeqFiles", url, sc, partition_num)
+
+
+class DetectionOutputParam():
+    """
+    Detection output parameter for SSD
+    """
+
+    def __init__(self, n_classes=21, share_location=True, bg_label=0, nms_thresh=0.45,
+                 nms_topk=400, keep_topk=200, conf_thresh= 0.01, variance_encoded_in_target=False):
+        self.n_classes = n_classes
+        self.share_location = share_location
+        self.bg_label = bg_label
+        self.nms_thresh = nms_thresh
+        self.nms_topk = nms_topk
+        self.keep_topk = keep_topk
+        self.conf_thresh = conf_thresh
+        self.variance_encoded_in_target = variance_encoded_in_target
+
+    def __reduce__(self):
+        return DetectionOutputParam, (self.n_classes, self.share_location, self.bg_label,
+                                      self.nms_thresh, self.nms_topk, self.keep_topk,
+                                      self.conf_thresh, self.variance_encoded_in_target)
+
+    def __str__(self):
+        return "DetectionOutputParam {n_classes: %s, share_location: %s, bg_label: %s," \
+               " nms_thresh: %s, nms_topk: %s, keep_topk: %s, conf_thresh: %s," \
+               " variance_encoded_in_target: %s}" \
+               % (self.n_classes, self.share_location, self.bg_label,
+                  self.nms_thresh, self.nms_topk, self.keep_topk,
+                  self.conf_thresh, self.variance_encoded_in_target)

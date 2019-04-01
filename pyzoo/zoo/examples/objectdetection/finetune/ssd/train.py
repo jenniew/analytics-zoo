@@ -20,7 +20,10 @@ from bigdl.nn.layer import Model
 from bigdl.optim.optimizer import *
 from zoo.common.nncontext import init_nncontext
 from zoo.examples.objectdetection.finetune.fastrcnn import vggfrcnn
-from zoo.models.image.objectdetection import *
+from zoo.models.image.objectdetection.ssd import *
+from zoo.models.image.objectdetection.object_detector import *
+from zoo.feature.common import *
+
 
 # parser = argparse.ArgumentParser()
 # parser.add_argument('model_path', help="Path where the model is stored")
@@ -35,16 +38,15 @@ parser.add_option("-v", "--valFolder", dest="val_folder", default="./",
                   help="url of hdfs folder store the validation hadoop sequence files")
 parser.add_option("-r", "--resolution", type=int, dest="resolution", default=300,
                   help="input resolution 300 or 512")
-parser.add_option("--preTrainModel", dest="pretrain_model", default="./",
-                  help="pretrain model location")
+parser.add_option("--model", dest="model_snapshot", help="model snapshot location")
+parser.add_option("--dataset", dest="dataset", default="pascal",
+                  help="which dataset of the model will be used")
 parser.add_option("--state", dest="state_snapshot", help="state snapshot location")
 parser.add_option("--checkpoint", dest="checkpoint", help="where to cache the model")
-parser.add_option("--checkIter", type=int, dest="check_iter", default=200,
-                  help="checkpoint iteration")
-parser.add_option("--overwrite", dest="overwrite_checkpoint", default=False,
-                  help="overwrite checkpoint files")
+parser.add_option("--overwriteCheckpoint", dest="overwrite_checkpoint", default=False,
+                  help="whether to overwrite checkpoint files")
 parser.add_option("-e", "--maxEpoch", type=int, dest="max_epoch", default=20, help="epoch number")
-parser.add_option("-l", "--learningRate", type=float, dest="learning_rate", default=0.001,
+parser.add_option("-l", "--learningRate", type=float, dest="learning_rate", default=0.0001,
                   help="initial learning rate")
 parser.add_option("--learningRateDecay", type=float, dest="learning_rate_decay", default=0.0005,
                   help="learning rate decay")
@@ -56,42 +58,51 @@ parser.add_option("--name", dest="job_name", default="Analytics Zoo SSD Fine Tun
 parser.add_option("--summary", dest="summary_dir", help="train validate summary directory")
 parser.add_option("-p", "--partition", type=int, dest="n_partition", default=1,
                   help="number of partitions")
+parser.add_option("--saveModelPath", dest="save_model_path", default="./final.model",
+                    help="where to save trained model")
+parser.add_option("--overwriteModel", dest="overwrite_model", default=False,
+                  help="whether to overwrite model file")
 
 
 def train(args):
     class_names = [line.rstrip('\n') for line in args.class_name_file]
 
-    # prepare pre and post params
-    pre_param_val = PreProcessParam(args.batch_size, n_partition=args.batch_size)
-
-    # load pretrained model
-    pretrain = Model.load(args.pretrain_model)
-    model = vggfrcnn(len(class_names), post_param)
-    load_model_weights(pretrain, model, False)
-
     # load train data
-    train_data = roi_seq_files_to_image_frame(args.train_foler, sc, args.n_partition)
-    train_transformer = Pipeline(BytesToMat(),
-                                 RoiNormalize(),
-                                 ColorJitter(),
-                                 RandomTransformer(Pipeline(Expand(), RoiProject()), 0.5),
-                                 RandomSampler(),
-                                 Resize(args.resolution, args.resolution, -1),
-                                 RandomTransformer(Pipeline(HFlip(), RoiHFlip()), 0.5),
-                                 ChannelNormalize(123, 117, 104),
-                                 MatToFloats(valid_height=args.resolution, valid_width=args.resolution),
-                                 RoiImageToBatch(args.batch_size))
-    train_set = DataSet.image_frame(train_data).transform(train_transformer)
+    train_data = load_roi_seq_files(args.train_foler, sc, args.n_partition)
+    train_transformer = ChainedPreprocessing([RoiRecordToFeature(),
+                                              ImageBytesToMat(),
+                                              ImageRoiNormalize(),
+                                              ImageColorJitter(),
+                                              ImageRandomPreprocessing(
+                                                  ChainedImagePreprocessing([ImageExpand(), ImageRoiProject()]), 0.5),
+                                              ImageRandomSampler(),
+                                              ImageResize(args.resolution, args.resolution, -1),
+                                              ImageRandomPreprocessing(
+                                                  ChainedImagePreprocessing([ImageHFlip(), ImageRoiHFlip()]), 0.5),
+                                              ImageChannelNormalize(123, 117, 104),
+                                              ImageMatToFloats(valid_height=args.resolution,
+                                                               valid_width=args.resolution),
+                                              RoiImageToSSDBatch(args.batch_size)])
+    train_set = FeatureSet.rdd(train_data).transform(train_transformer)
 
     # load val data
-    val_data = roi_seq_files_to_image_frame(args.val_foler, sc, args.n_partition)
-    val_transformer = Pipeline(BytesToMat(),
-                               RoiNormalize(),
-                               Resize(args.resolution, args.resolution, -1),
-                               ChannelNormalize(123, 117, 104),
-                               MatToFloats(valid_height=100, valid_width=100),
-                               RoiImageToBatch(args.batch_size))
-    val_set = DataSet.image_frame(val_data).transform(val_transformer)
+    val_data = load_roi_seq_files(args.val_foler, sc, args.n_partition)
+    val_transformer = ChainedPreprocessing([RoiRecordToFeature(),
+                                            ImageBytesToMat(),
+                                            ImageRoiNormalize(),
+                                            ImageResize(args.resolution, args.resolution, -1),
+                                            ImageChannelNormalize(123, 117, 104),
+                                            ImageMatToFloats(valid_height=args.resolution, valid_width=args.resolution),
+                                            RoiImageToSSDBatch(args.batch_size)])
+    val_set = FeatureSet.rdd(val_data).transform(val_transformer)
+
+    # prepare pre and post params
+    # pre_param_val = PreProcessParam(args.batch_size, n_partition=args.batch_size)
+
+    # load pretrained model
+    model = SSDVGG(len(class_names), args.resolution, args.dataset)
+    pretrained = ImageModel._do_load(args.model_snapshot)
+    load_model_weights(pretrained, model, False)
 
     # optim method
     if args.state_snapshot:
@@ -125,10 +136,11 @@ def train(args):
 
     optimizer.optimize()
 
-    model.saveModel("./final.model")
+    model.saveModel(args.save_model_path, args.overwrite_model)
 
 
 if __name__ == "__main__":
     (options, args) = parser.parse_args(sys.argv)
+    # initial zoo context
     sc = init_nncontext(args.job_name)
     train(args)

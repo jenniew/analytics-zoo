@@ -20,7 +20,7 @@ import java.util.{List => JList, Map => JMap}
 
 import com.intel.analytics.bigdl.{Criterion, Module, dataset}
 import com.intel.analytics.bigdl.dataset.PaddingParam
-import com.intel.analytics.bigdl.nn.DetectionOutputFrcnn
+import com.intel.analytics.bigdl.nn.{DetectionOutputFrcnn, DetectionOutputParam}
 import com.intel.analytics.bigdl.nn.abstractnn.{AbstractModule, Activity}
 import com.intel.analytics.bigdl.nn.keras.{KerasLayer, KerasModel}
 import com.intel.analytics.bigdl.optim.{OptimMethod, Regularizer, ValidationMethod, ValidationResult}
@@ -308,10 +308,10 @@ class PythonZooModel[T: ClassTag](implicit ev: TensorNumeric[T]) extends PythonZ
     RoiRecordToFeature(convertLabel, outKey)
   }
 
-  def createRoiImageToBatch(batchSize: Int, convertLabel: Boolean = true,
+  def createRoiImageToSSDBatch(batchSize: Int, convertLabel: Boolean = true,
                             partitionNum: Option[Int] = None, keepImageFeature: Boolean = true,
-                            inputKey: String = ImageFeature.floats): RoiImageToBatch = {
-    RoiImageToBatch(batchSize, convertLabel, partitionNum, keepImageFeature, inputKey)
+                            inputKey: String = ImageFeature.floats): RoiImageToSSDBatch = {
+    RoiImageToSSDBatch(batchSize, convertLabel, partitionNum, keepImageFeature, inputKey)
   }
 
   def createFrcnnToBatch(batchSize: Int, convertLabel: Boolean = true,
@@ -369,6 +369,12 @@ class PythonZooModel[T: ClassTag](implicit ev: TensorNumeric[T]) extends PythonZ
   def loadModelWeights(srcModel: Module[Float], targetModel: Module[Float],
                        matchAll: Boolean): Unit = {
     ModuleUtil.loadModelWeights(srcModel, targetModel, matchAll)
+  }
+
+  def createZooSSDVGG(classNum: Int, resolution: Int,
+                      dataset: String, sizes: JList[Double],
+                      postProcessParam: DetectionOutputParam): SSDVGG = {
+    SSDVGG(classNum, resolution, dataset, sizes.asScala.toArray.map(_.toFloat), postProcessParam)
   }
 
   def loadRoiSeqFiles(url: String, sc: JavaSparkContext, partitionNum: Int= -1): JavaRDD[ByteRecord] = {
