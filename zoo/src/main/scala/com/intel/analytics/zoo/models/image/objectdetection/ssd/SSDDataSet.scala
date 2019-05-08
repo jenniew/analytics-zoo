@@ -42,7 +42,6 @@ object SSDDataSet {
     val trainRdd = Imdb.loadRoiSeqFiles(folder, sc, parNum)
     FeatureSet.rdd(trainRdd) -> RoiRecordToFeature(true) ->
       ImageBytesToMat() ->
-      ImageRoiNormalize() ->
       ImageColorJitter() ->
       ImageRandomPreprocessing(ImageExpand() -> ImageRoiProject(), 0.5) ->
       ImageRandomSampler() ->
@@ -68,7 +67,6 @@ object SSDDataSet {
     val valRdd = Imdb.loadRoiSeqFiles(folder, sc, parNum)
     FeatureSet.rdd(valRdd) -> RoiRecordToFeature(true) ->
       ImageBytesToMat() ->
-      ImageRoiNormalize() ->
       ImageResize(resolution, resolution) ->
       ImageChannelNormalize(123f, 117f, 104f) ->
       ImageMatToFloats(validHeight = resolution, validWidth = resolution) ->

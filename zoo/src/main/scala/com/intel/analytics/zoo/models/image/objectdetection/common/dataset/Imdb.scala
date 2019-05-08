@@ -51,6 +51,8 @@ object Imdb {
       new PascalVoc(items(1), items(2), devkitPath)
     } else if (items(0) == "coco") {
       new Coco(items(1), devkitPath)
+    } else if (items(0) == "open-images") {
+      new OpenImages(items(1), devkitPath)
     } else {
       new CustomizedDataSet(name, devkitPath)
     }
