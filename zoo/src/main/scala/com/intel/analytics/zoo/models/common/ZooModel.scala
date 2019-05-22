@@ -17,9 +17,13 @@
 package com.intel.analytics.zoo.models.common
 
 import com.intel.analytics.bigdl.dataset.Sample
-import com.intel.analytics.bigdl.nn.{Container, Module}
+import com.intel.analytics.bigdl.nn.Graph.ModuleNode
+import com.intel.analytics.bigdl.nn.{Container, Graph, Input, Module, StaticGraph, Sequential => BSequential}
 import com.intel.analytics.bigdl.nn.abstractnn.{AbstractModule, Activity}
+//import com.intel.analytics.bigdl.nn.keras.Model
+import com.intel.analytics.bigdl.nn.keras.Model._copyWeightAndBias
 import com.intel.analytics.bigdl.tensor.TensorNumericMath.TensorNumeric
+import com.intel.analytics.bigdl.utils.serializer.{DeserializeContext, ModuleSerializer}
 import com.intel.analytics.zoo.pipeline.api.keras.layers.WordEmbedding
 import com.intel.analytics.zoo.pipeline.api.keras.layers.utils.KerasUtils
 import com.intel.analytics.zoo.pipeline.api.keras.models.{KerasNet, Model, Sequential}
@@ -64,6 +68,35 @@ abstract class ZooModel[A <: Activity: ClassTag, B <: Activity: ClassTag, T: Cla
     modules += model
     this
   }
+
+//  def toGraph(): GraphNet[T] = {
+//    val innerContainer = this.modules(0)
+//    val tGraph = toGraphNode(innerContainer)
+//    Model(tGraph.inputs.toArray, tGraph.outputs.toArray)
+//  }
+//
+//  var curNode: ModuleNode[T] = Input()
+//  var containsGraph = false
+//  def toGraphNode(module: AbstractModule[Activity, Activity, T]): Graph[T] = {
+//    module match {
+//      case m: Graph[T] => {
+//        containsGraph = true
+//        return
+//      }
+//      case m: BSequential[T] => {
+//        m.modules.foreach(module =>{
+//          if (module.isInstanceOf[Container[Activity, Activity, T]]){
+//            toGraphNode(module)
+//          } else {
+//            val moduleNode = module.inputs(curNode)
+//            curNode = moduleNode
+//          }
+//
+//        })
+//      }
+//      case m:
+//    }
+//  }
 
   /**
    * Save the model to the specified path.

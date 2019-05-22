@@ -26,7 +26,7 @@ import org.apache.spark.SparkConf
 import org.opencv.imgcodecs.Imgcodecs
 import scopt.OptionParser
 
-object Predict {
+object PredictDNN {
   Logger.getLogger("org").setLevel(Level.ERROR)
   Logger.getLogger("akka").setLevel(Level.ERROR)
   Logger.getLogger("breeze").setLevel(Level.ERROR)

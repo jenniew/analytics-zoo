@@ -23,6 +23,7 @@ import com.intel.analytics.bigdl.nn.Graph.ModuleNode
 import com.intel.analytics.bigdl.nn._
 import com.intel.analytics.bigdl.nn.abstractnn.{AbstractModule, Activity}
 import com.intel.analytics.zoo.models.image.common.ImageModel
+import com.intel.analytics.zoo.models.image.objectdetection.ObjectDetector
 
 import scala.reflect.ClassTag
 
@@ -33,7 +34,7 @@ import scala.reflect.ClassTag
  * @tparam T
  */
 abstract class SSD[T: ClassTag]()(implicit ev: TensorNumeric[T])
-  extends ImageModel[T]
+  extends ObjectDetector[T]
 
 /**
  * SSD model based on VGG16

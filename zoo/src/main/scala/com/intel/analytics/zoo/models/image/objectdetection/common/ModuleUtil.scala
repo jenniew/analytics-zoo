@@ -178,6 +178,21 @@ object ModuleUtil {
   }
 
   /**
+   * Set Scale of gradientBias to the layers except detection output layer,
+   * their input gradient are not computed.
+   *
+   * @param model the graph model
+   * @param b the value of the scale of gradientBias
+   * @tparam T
+   */
+  def setScaleB[@specialized(Float, Double) T: ClassTag](model: Graph[T], b: Double): Unit = {
+    val scaleModules = model.modules
+      .filterNot(_.getClass.getName.endsWith("DetectionOutputSSD"))
+      .toArray
+    scaleModules.foreach(m => m.setScaleB(b))
+  }
+
+  /**
    * select results (confs || locs || priorboxes), use JoinTable to concat them into one tensor
    * @param start start index of the result
    * @param dim dimension to join
