@@ -16,6 +16,8 @@
 
 package com.intel.analytics.zoo.models.image.objectdetection.common.dataset
 
+import java.io.{File, PrintWriter}
+
 import com.intel.analytics.bigdl.tensor.{Storage, Tensor}
 import com.intel.analytics.bigdl.transform.vision.image.ImageFeature
 import com.intel.analytics.bigdl.transform.vision.image.label.roi.RoiLabel
