@@ -210,7 +210,7 @@ def main(unused_argv):
                       FLAGS.train_data_pattern + "'.")
     print("Number of training files: %s.", str(len(files)))
 
-    sc = init_nncontext("Image Classification Example")
+    sc = init_nncontext("Video Classification Example")
     record_rdd = sc.parallelize(files).flatMap(
         lambda filename: (example for example in tf.python_io.tf_record_iterator(filename)))
 
@@ -247,6 +247,8 @@ def main(unused_argv):
     optimizer = TFOptimizer.from_loss(loss, optim_method, clip_norm=FLAGS.clip_gradient_norm)
     optimizer.set_train_summary(TrainSummary("/model/youtube/frame/summary", "youtube"))
     optimizer.optimize(end_trigger=MaxEpoch(FLAGS.num_epochs))
+    saver = tf.train.Saver()
+    saver.save(optimizer.sess, FLAGS.train_dir)
 
 
 if __name__ == "__main__":
