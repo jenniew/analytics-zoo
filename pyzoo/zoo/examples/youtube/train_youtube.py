@@ -30,37 +30,6 @@ def mapper(filename):
     return (example for example in tf.python_io.tf_record_iterator(filename))
 
 
-def read(example, is_frame_level):
-    if is_frame_level:
-        tf_seq_example = tf.train.SequenceExample.FromString(example)
-        n_frames = len(tf_seq_example.feature_lists.feature_list['audio'].feature)
-        sess = tf.InteractiveSession()
-        rgb_frame = []
-        audio_frame = []
-        # iterate through frames
-        for i in range(n_frames):
-            rgb_frame.append(tf.cast(tf.decode_raw(
-                tf_seq_example.feature_lists.feature_list['rgb'].feature[i].bytes_list.value[0], tf.uint8)
-                , tf.float32).eval())
-            audio_frame.append(tf.cast(tf.decode_raw(
-                tf_seq_example.feature_lists.feature_list['audio'].feature[i].bytes_list.value[0], tf.uint8)
-                , tf.float32).eval())
-
-        sess.close()
-
-    else:
-        vid_ids = []
-        labels = []
-        mean_rgb = []
-        mean_audio = []
-
-        tf_example = tf.train.Example.FromString(example)
-        vid_ids.append(tf_example.features.feature['id'].bytes_list.value[0].decode(encoding='UTF-8'))
-        labels.append(tf_example.features.feature['labels'].int64_list.value)
-        mean_rgb.append(tf_example.features.feature['mean_rgb'].float_list.value)
-        mean_audio.append(tf_example.features.feature['mean_audio'].float_list.value)
-
-
 def read2(example, is_frame_level, reader):
     num_features = len(reader.feature_names)
     max_quantized_value = 2
@@ -119,12 +88,7 @@ def read2(example, is_frame_level, reader):
         # batch_frames = tf.expand_dims(num_frames, 0).eval()
 
         sess.close()
-        # output_dict = {
-        #     "video_ids": video_id,
-        #     "video_matrix": model_input,
-        #     "labels": labels,
-        #     "num_frames": num_frames
-        # }
+
         # print [model_input, num_frames], labels
         return ([video_matrix, num_frames], labels)
 
@@ -204,25 +168,19 @@ def main(unused_argv):
     # model_exporter = export_model.ModelExporter(
     #     frame_features=FLAGS.frame_features, model=model, reader=reader)
 
-    files = gfile.Glob(FLAGS.train_data_pattern)
-    if not files:
-        raise IOError("Unable to find training files. data_pattern='" +
-                      FLAGS.train_data_pattern + "'.")
-    print("Number of training files: %s.", str(len(files)))
+    # files = gfile.Glob(FLAGS.train_data_pattern)
+    # if not files:
+    #     raise IOError("Unable to find training files. data_pattern='" +
+    #                   FLAGS.train_data_pattern + "'.")
+    # print("Number of training files: %s.", str(len(files)))
 
     sc = init_nncontext("Video Classification Example")
-    record_rdd = sc.parallelize(files).flatMap(
-        lambda filename: (example for example in tf.python_io.tf_record_iterator(filename)))
-
-    # record_result = record_rdd.collect()
-    train_data = record_rdd.map(lambda example: read2(example, True, reader))
-    # train_result = train_data.collect()
-    # train_0 = train_data.take(1)[0]
-    # print("model input is: ", train_0[0][0].shape)
-    # print("num_frames is: ", train_0[0][1])
-    # print("label shape is: ", train_0[1].shape)
-    # train_count = train_data.count()
-    # print("train data count is: ", train_count)
+    # record_rdd = sc.parallelize(files).flatMap(
+    #     lambda filename: (example for example in tf.python_io.tf_record_iterator(filename)))
+    dataRDD = sc.newAPIHadoopFile(FLAGS.train_data_pattern, "org.tensorflow.hadoop.io.TFRecordFileInputFormat",
+                                  keyClass="org.apache.hadoop.io.BytesWritable",
+                                  valueClass="org.apache.hadoop.io.NullWritable")
+    train_data = dataRDD.map(lambda record: read2(bytes(record[0]), True, reader))
 
     train_dataset = TFDataset.from_rdd(train_data,
                                        features=[(tf.float32, [300, 1152]), (tf.int32, [])],
@@ -249,32 +207,10 @@ def main(unused_argv):
     optimizer.optimize(end_trigger=MaxEpoch(FLAGS.num_epochs))
     saver = tf.train.Saver()
     saver.save(optimizer.sess, FLAGS.train_dir)
+    sc.stop()
 
 
 if __name__ == "__main__":
-    # parser = OptionParser()
-    # parser.add_option("--model", type=str, dest="model", default="LogisticModel",
-    #                   help="Path where the images are stored")
-    # parser.add_option("--frame_features", action="store_true", dest="frame_features",
-    #                   help="If set, then --train_data_pattern must be frame-level features. "
-    #   "Otherwise, --train_data_pattern must be aggregated video-level "
-    #   "features. The model must also be set appropriately (i.e. to read 3D "
-    #   "batches VS 4D batches")
-    # parser.add_option("--model_dir", type=str, dest="model_dir", default="/tmp/yt8m_model/",
-    #                   help="The directory to save the model files in.")
-    # parser.add_option("--iterations", type=int, dest="iterations", default=1000,
-    #                   help="The maximum number of iterations of the training loop.")
-    # parser.add_option("--export_model_iterations", type=int, dest="export_model_iterations",
-    #                   default=1000, help="The period, in number of steps, with which the "
-    #                                      "model is exported for batch prediction.")
-    # parser.add_option("--start_new_model", action="store_true", dest="start_new_model", default =False,
-    #                   help="If set, this will not resume from a checkpoint and will instead "
-    #                        "create a new model instance.")
-    # parser.add_option("--train_data_pattern", type=str, dest="train_data_pattern", default="/tmp/yt8m_model/",
-    #                   help="File glob for the training dataset. If the files refer to Frame Level "
-    #                        "features (i.e. tensorflow.SequenceExample), then set --reader_type "
-    #                        "format. The (Sequence)Examples are expected to have 'rgb' byte array "
-    #                        "sequence feature as well as a 'labels' int64 context feature.")
 
     # Dataset flags.
     flags.DEFINE_string("train_dir", "/tmp/yt8m_model/",
