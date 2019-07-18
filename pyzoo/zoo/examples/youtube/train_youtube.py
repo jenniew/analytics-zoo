@@ -6,15 +6,16 @@ import train as ytrain
 import utils
 import readers
 
+import numpy as np
 from tensorflow import flags
-from tensorflow import gfile
 from tensorflow import app
 
-
+from bigdl.optim.optimizer import MaxEpoch, TrainSummary, Adam
 from zoo.common.nncontext import init_nncontext
 from zoo.pipeline.api.net import TFOptimizer
 from zoo.pipeline.api.net import TFDataset
-from bigdl.optim.optimizer import MaxEpoch, TrainSummary, Adam
+from zoo.common import set_core_number
+
 
 slim = tf.contrib.slim
 FLAGS = flags.FLAGS
@@ -30,7 +31,7 @@ def mapper(filename):
     return (example for example in tf.python_io.tf_record_iterator(filename))
 
 
-def read2(example, is_frame_level, reader):
+def read(example, is_frame_level, reader):
     num_features = len(reader.feature_names)
     max_quantized_value = 2
     min_quantized_value = -2
@@ -89,8 +90,171 @@ def read2(example, is_frame_level, reader):
 
         sess.close()
 
-        # print [model_input, num_frames], labels
-        return ([video_matrix, num_frames], labels)
+        return [video_matrix, num_frames], labels
+
+
+def read_np(example, is_frame_level, reader):
+    num_features = len(reader.feature_names)
+    assert num_features > 0, "No feature selected: feature_names is empty!"
+    max_quantized_value = 2
+    min_quantized_value = -2
+    if is_frame_level:
+        import time
+        start = time.time()
+        example = tf.train.SequenceExample.FromString(example)
+        id = example.context.feature["id"].bytes_list.value[0].decode(encoding='UTF-8')
+        labels_list = example.context.feature["labels"].int64_list.value
+
+        # read ground truth labels
+        labels = np.zeros((reader.num_classes), dtype = "int64")
+        for i, v in enumerate(labels_list):
+            labels[v] = 1
+
+        # loads (potentially) different types of features and concatenates them
+
+        assert len(reader.feature_names) == len(reader.feature_sizes), \
+            "length of feature_names (={}) != length of feature_sizes (={})".format( \
+                len(reader.feature_names), len(reader.feature_sizes))
+
+        # num_frames = -1  # the number of frames in the video
+        n_frames = len(example.feature_lists.feature_list[reader.feature_names[0]].feature)
+        num_frames = np.minimum(n_frames, reader.max_frames)
+        feature_matrices = [None] * num_features  # an array of different features
+        for feature_index in range(num_features):
+            features = []
+            for i in range(num_frames):
+                feature = example.feature_lists.feature_list[reader.feature_names[feature_index]].feature[i].bytes_list.value[0]
+                feature_np = np.fromstring(feature, dtype="uint8").astype("float32")
+                features.append(feature_np)
+            feature_matrix = get_video_matrix(
+                features,
+                reader.feature_sizes[feature_index],
+                reader.max_frames,
+                max_quantized_value,
+                min_quantized_value)
+            feature_matrices[feature_index] = feature_matrix
+
+        # concatenate different features
+        video_matrix = np.concatenate(feature_matrices, 1)
+        end = time.time()
+        print("process one record time: ", end-start)
+        return [video_matrix, num_frames], labels
+
+
+def get_video_matrix(features,
+                       feature_size,
+                       max_frames,
+                       max_quantized_value,
+                       min_quantized_value):
+    decoded_features = np.array(features).reshape([-1, feature_size])
+
+    # num_frames = np.minimum(decoded_features.shape[0], max_frames)
+    assert max_quantized_value > min_quantized_value
+    quantized_range = max_quantized_value - min_quantized_value
+    scalar = quantized_range / 255.0
+    bias = (quantized_range / 512.0) + min_quantized_value
+
+    feature_matrix = decoded_features * scalar + bias
+    feature_matrix = resize_axis(feature_matrix, 0, max_frames)
+    return feature_matrix
+
+
+def resize_axis(array, axis, new_size, fill_value=0):
+  """Truncates or pads a tensor to new_size on on a given axis.
+
+  Truncate or extend tensor such that tensor.shape[axis] == new_size. If the
+  size increases, the padding will be performed at the end, using fill_value.
+
+  Args:
+    tensor: The tensor to be resized.
+    axis: An integer representing the dimension to be sliced.
+    new_size: An integer or 0d tensor representing the new value for
+      tensor.shape[axis].
+    fill_value: Value to use to fill any new entries in the tensor. Will be
+      cast to the type of tensor.
+
+  Returns:
+    The resized tensor.
+  """
+
+  shape = list(array.shape)
+
+  pad_shape = shape[:]
+  pad_shape[axis] = np.maximum(0, new_size - shape[axis])
+
+  shape[axis] = np.minimum(shape[axis], new_size)
+
+  resized = np.concatenate([
+      array[:shape[axis],:],
+      np.full(np.stack(pad_shape), fill_value, dtype = array.dtype)
+  ], axis)
+  return resized
+
+
+def read_partition(partition_iter, is_frame_level, reader):
+    num_features = len(reader.feature_names)
+    assert num_features > 0, "No feature selected: feature_names is empty!"
+    if is_frame_level:
+        sess = tf.InteractiveSession()
+        # new_partition = map(lambda record: read3(bytes(record[0]), reader), partition_iter)
+        for record in partition_iter:
+            yield read_one(bytes(record[0]), reader)
+        sess.close()
+        # return new_partition
+
+
+def read_one(example, reader):
+    import time
+    start = time.time()
+    max_quantized_value = 2
+    min_quantized_value = -2
+    contexts, features = tf.parse_single_sequence_example(
+        example,
+        context_features={"id": tf.FixedLenFeature(
+            [], tf.string),
+            "labels": tf.VarLenFeature(tf.int64)},
+        sequence_features={
+            feature_name: tf.FixedLenSequenceFeature([], dtype=tf.string)
+            for feature_name in reader.feature_names
+        })  # read ground truth labels
+    labels = (
+        tf.sparse_to_dense(contexts["labels"].values, (reader.num_classes,), 1,
+                           validate_indices=False)).eval()
+
+    # loads (potentially) different types of features and concatenates them
+    num_features = len(reader.feature_names)
+    assert num_features > 0, "No feature selected: feature_names is empty!"
+
+    assert len(reader.feature_names) == len(reader.feature_sizes), \
+        "length of feature_names (={}) != length of feature_sizes (={})".format( \
+            len(reader.feature_names), len(reader.feature_sizes))
+
+    num_frames = -1  # the number of frames in the video
+    feature_matrices = [None] * num_features  # an array of different features
+    for feature_index in range(num_features):
+        feature_matrix, num_frames_in_this_feature = reader.get_video_matrix(
+            features[reader.feature_names[feature_index]],
+            reader.feature_sizes[feature_index],
+            reader.max_frames,
+            max_quantized_value,
+            min_quantized_value)
+        if num_frames == -1:
+            num_frames = num_frames_in_this_feature
+        else:
+            tf.assert_equal(num_frames, num_frames_in_this_feature)
+
+        feature_matrices[feature_index] = feature_matrix
+
+    # cap the number of frames at self.max_frames
+    num_frames = tf.minimum(num_frames, reader.max_frames).eval()
+
+    # concatenate different features
+    video_matrix = tf.concat(feature_matrices, 1).eval()
+
+    end = time.time()
+    print("process one record time: ", end - start)
+
+    return [video_matrix, num_frames], labels
 
 
 def build_graph(model, model_input_raw, vocab_size, num_frames, labels, iterations,
@@ -164,23 +328,13 @@ def build_graph(model, model_input_raw, vocab_size, num_frames, labels, iteratio
 
 def main(unused_argv):
     reader = ytrain.get_reader()
-
-    # model_exporter = export_model.ModelExporter(
-    #     frame_features=FLAGS.frame_features, model=model, reader=reader)
-
-    # files = gfile.Glob(FLAGS.train_data_pattern)
-    # if not files:
-    #     raise IOError("Unable to find training files. data_pattern='" +
-    #                   FLAGS.train_data_pattern + "'.")
-    # print("Number of training files: %s.", str(len(files)))
-
     sc = init_nncontext("Video Classification Example")
-    # record_rdd = sc.parallelize(files).flatMap(
-    #     lambda filename: (example for example in tf.python_io.tf_record_iterator(filename)))
+    if FLAGS.set_core_number:
+        set_core_number(FLAGS.core_number)
     dataRDD = sc.newAPIHadoopFile(FLAGS.train_data_pattern, "org.tensorflow.hadoop.io.TFRecordFileInputFormat",
                                   keyClass="org.apache.hadoop.io.BytesWritable",
                                   valueClass="org.apache.hadoop.io.NullWritable")
-    train_data = dataRDD.map(lambda record: read2(bytes(record[0]), True, reader))
+    train_data = dataRDD.map(lambda record: read_np(bytes(record[0]), True, reader))
 
     train_dataset = TFDataset.from_rdd(train_data,
                                        features=[(tf.float32, [300, 1152]), (tf.int32, [])],
@@ -286,6 +440,12 @@ if __name__ == "__main__":
                          "How many threads to use for reading input files.")
     flags.DEFINE_string("optimizer", "AdamOptimizer",
                         "What optimizer class to use.")
+
+    # set core number
+    flags.DEFINE_bool("set_core_number", False,
+                         "if set total cores for training.")
+    flags.DEFINE_integer("core_number", 2,
+                         "How many total cores for training.")
 
     # (options, args) = parser.parse_args(sys.argv)
     app.run()
