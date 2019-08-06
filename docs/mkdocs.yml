@@ -25,6 +25,8 @@ pages:
     - Install: ScalaUserGuide/install.md
     - Run: ScalaUserGuide/run.md
     - Examples: ScalaUserGuide/examples.md
+- Developer Guide:
+  - For Python Developers: DeveloperGuide/python.md
 - Programming Guide: 
   - Pipeline APIs:
     - DataFrame and ML Pipeline: ProgrammingGuide/nnframes.md
@@ -46,6 +48,7 @@ pages:
     - Anomaly Detection API: ProgrammingGuide/anomaly-detection.md
     - Text Matching API: ProgrammingGuide/text-matching.md
     - Sequence to Sequence API: ProgrammingGuide/seq2seq.md
+  - Visualization: ProgrammingGuide/visualization.md
   - Reference Use Cases: ProgrammingGuide/usercases-overview.md
   - Run on Google Cloud Dataproc: ProgrammingGuide/run-on-dataproc.md
 - White Paper:
@@ -67,6 +70,8 @@ pages:
     - Relation: APIGuide/FeatureEngineering/relation.md
     - Image: APIGuide/FeatureEngineering/image.md
     - Text: APIGuide/FeatureEngineering/text.md
+  - Ray:
+    - RayOnSpark: APIGuide/Ray/rayonspark.md
   - Models:
     - Object Detection: APIGuide/Models/object-detection.md
     - Image Classification: APIGuide/Models/image-classification.md

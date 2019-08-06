@@ -33,8 +33,7 @@ case class PredictParams(folder: String = "./",
                          weight: String = "",
                          batchSize: Int = 4,
                          topN: Int = 5,
-                         partitionNum: Int = 4,
-                         isInt8: Boolean = false)
+                         partitionNum: Int = 4)
 
 object Predict {
   Logger.getLogger("org").setLevel(Level.ERROR)
@@ -67,20 +66,13 @@ object Predict {
       opt[Int]('b', "batchSize")
         .text("batch size")
         .action((x, c) => c.copy(batchSize = x))
-      opt[Boolean]("isInt8")
-        .text("Is Int8 optimized model?")
-        .action((x, c) => c.copy(isInt8 = x))
     }
     parser.parse(args, PredictParams()).map(param => {
       val sc = NNContext.initNNContext("Predict Image with OpenVINO Int8 Example")
 
       val model = new InferenceModel(1)
 
-      if (param.isInt8) {
-        model.doLoadOpenVINOInt8(param.model, param.weight, param.batchSize)
-      } else {
-        model.doLoadOpenVINO(param.model, param.weight)
-      }
+      model.doLoadOpenVINO(param.model, param.weight, param.batchSize)
 
       // Read ImageNet val
       val images = ImageSet.read(param.folder,
@@ -102,13 +94,8 @@ object Predict {
       // Predict
       logger.debug("Begin Prediction")
       val predicts = batched.toLocal().data(false).flatMap(miniBatch => {
-        val predict = if (param.isInt8) {
-          model.doPredictInt8(miniBatch
-            .getInput.toTensor.addSingletonDimension())
-        } else {
-          model.doPredict(miniBatch
-            .getInput.toTensor.addSingletonDimension())
-        }
+        val predict = model.doPredict(miniBatch
+          .getInput.toTensor.addSingletonDimension())
         predict.toTensor.squeeze.split(1).asInstanceOf[Array[Activity]]
       })
       // Add prediction into imageset

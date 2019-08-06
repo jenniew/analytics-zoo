@@ -21,10 +21,10 @@ import scopt.OptionParser
 case class WNDParams(dataset: String = "ml-1m",
                      modelType: String = "wide_n_deep",
                      inputDir: String = "./data/ml-1m/",
-                     onSpark: Boolean = true,
                      batchSize: Int = 2048,
                      maxEpoch: Int = 10,
-                     logDir: Option[String] = None)
+                     logDir: Option[String] = None,
+                     memoryType: String = "DRAM")
 
 object WideAndDeepExample {
   def main(args: Array[String]): Unit = {
@@ -40,9 +40,6 @@ object WideAndDeepExample {
       opt[String]("inputDir")
         .text(s"inputDir")
         .action((x, c) => c.copy(inputDir = x))
-      opt[Boolean]("onSpark")
-        .text(s"whether run on spark, default is true")
-        .action((x, c) => c.copy(onSpark = x))
       opt[Int]('b', "batchSize")
         .text(s"batch size, default is 40")
         .action((x, c) => c.copy(batchSize = x))
@@ -52,6 +49,9 @@ object WideAndDeepExample {
       opt[String]("logDir")
         .text(s"logDir")
         .action((x, c) => c.copy(logDir = Some(x)))
+      opt[String]("memoryType")
+        .text("memory type, DRAM, PMEM or a int number")
+        .action((x, c) => c.copy(memoryType = x))
     }
     parser.parse(args, defaultParams).map {
       params =>
