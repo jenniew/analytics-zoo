@@ -15,6 +15,7 @@
 #
 
 import sys
+from bigdl.util.common import callBigDlFunc, to_list, JTensor
 
 if sys.version >= '3':
     long = int
@@ -38,3 +39,9 @@ def remove_batch(shape):
         return [remove_batch(s) for s in shape]
     else:
         return list(shape[1:])
+
+def set_input_formats(model, input_formats):
+    callBigDlFunc("float", "setInputFormats", model, input_formats)
+
+def set_output_formats(model, output_formats):
+    callBigDlFunc("float", "setOutputFormats", model, output_formats)

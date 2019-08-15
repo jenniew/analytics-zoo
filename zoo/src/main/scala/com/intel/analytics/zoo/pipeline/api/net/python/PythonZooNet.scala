@@ -39,6 +39,7 @@ import scala.collection.mutable.ListBuffer
 import java.util.ArrayList
 import java.util.concurrent.{CopyOnWriteArrayList, TimeUnit}
 
+import com.intel.analytics.bigdl.nn.StaticGraph
 import org.apache.log4j.{Level, Logger}
 
 object PythonZooNet {
@@ -199,6 +200,22 @@ class PythonZooNet[T: ClassTag](implicit ev: TensorNumeric[T]) extends PythonZoo
 
   def createTorchCriterion(lossPath: String): TorchCriterion = {
     TorchCriterion(lossPath)
+  }
+
+  def setInputFormats(graph: StaticGraph[T], inputFormat: JList[Int]): StaticGraph[T] = {
+//    val seq = asScalaIteratorConverter(inputFormat.iterator()).asScala.toSeq
+    val seq = inputFormat.asScala.toList
+//    val seq = Seq(inputFormat.get(0))
+    println("set input format", seq, seq(0))
+    graph.setInputFormats(seq)
+  }
+
+  def setOutputFormats(graph: StaticGraph[T], outputFormat: JList[Int]): StaticGraph[T] = {
+//    val seq = asScalaIteratorConverter(outputFormat.iterator()).asScala.toSeq
+    val seq = outputFormat.asScala.toList
+//    val seq = Seq(outputFormat.get(0))
+    println("set output format", seq, seq(0))
+    graph.setOutputFormats(seq)
   }
 
 }

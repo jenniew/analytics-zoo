@@ -133,7 +133,7 @@ class NerProcessor(DataProcessor):
             texts = tokenization.convert_to_unicode(line[1])
             labels = tokenization.convert_to_unicode(line[0])
             examples.append(InputExample(guid=guid, text=texts, label=labels))
-        return examples
+        return examples[0:400]
 
 
 def convert_single_example(ex_index, example, label_list, max_seq_length, tokenizer):
@@ -263,8 +263,8 @@ if __name__ == '__main__':
         bert_config_file=os.path.join(options.bert_base_dir, "bert_config.json"),
         init_checkpoint=os.path.join(options.bert_base_dir, "bert_model.ckpt"))
     keras_model = Sequential()
-    keras_model.add(Bidirectional(LSTM(128, return_sequences=True), input_shape=(options.max_seq_length, 768)))
-    keras_model.add(Bidirectional(LSTM(128, return_sequences=True)))
+    keras_model.add(Bidirectional(LSTM(768, return_sequences=True), input_shape=(options.max_seq_length, 768)))
+    keras_model.add(Bidirectional(LSTM(768, return_sequences=True)))
     keras_model.add(Dense(len(label_list), activation="softmax"))
     keras_model.compile(loss='categorical_crossentropy', optimizer=tf.keras.optimizers.Adam(options.learning_rate, clipnorm=1.))
     model = KerasModel(keras_model)

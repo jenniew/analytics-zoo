@@ -22,12 +22,12 @@ import numpy as np
 import tensorflow as tf
 from optparse import OptionParser
 
-from tensorflow.keras import Sequential
-from tensorflow.keras.layers import Bidirectional, LSTM, Dense
+# from tensorflow.keras import Sequential
+# from tensorflow.keras.layers import Bidirectional, LSTM, Dense
 from zoo.common.nncontext import init_nncontext
 from zoo.tfpark.model import KerasModel
 from zoo.tfpark.text.estimator import BERTFeatureExtractor, bert_input_fn
-from zoo.pipeline.api.keras.optimizers import AdamWeightDecay
+from zoo.pipeline.api.keras.optimizers import AdamWeightDecay, Adam
 from zoo.pipeline.api.net import TFDataset
 from bert import tokenization
 
@@ -133,7 +133,7 @@ class NerProcessor(DataProcessor):
             texts = tokenization.convert_to_unicode(line[1])
             labels = tokenization.convert_to_unicode(line[0])
             examples.append(InputExample(guid=guid, text=texts, label=labels))
-        return examples
+        return examples[0:400]
 
 
 def convert_single_example(ex_index, example, label_list, max_seq_length, tokenizer):
@@ -262,12 +262,12 @@ if __name__ == '__main__':
     estimator = BERTFeatureExtractor(
         bert_config_file=os.path.join(options.bert_base_dir, "bert_config.json"),
         init_checkpoint=os.path.join(options.bert_base_dir, "bert_model.ckpt"))
-    keras_model = Sequential()
-    keras_model.add(Bidirectional(LSTM(768, return_sequences=True), input_shape=(options.max_seq_length, 768)))
-    keras_model.add(Bidirectional(LSTM(768, return_sequences=True)))
-    keras_model.add(Dense(len(label_list), activation="softmax"))
-    keras_model.compile(loss='categorical_crossentropy', optimizer=tf.keras.optimizers.Adam(0.001, clipnorm=5.))
-    model = KerasModel(keras_model)
+    # keras_model = Sequential()
+    # keras_model.add(Bidirectional(LSTM(768, return_sequences=True), input_shape=(options.max_seq_length, 768)))
+    # keras_model.add(Bidirectional(LSTM(768, return_sequences=True)))
+    # keras_model.add(Dense(len(label_list), activation="softmax"))
+    # keras_model.compile(loss='categorical_crossentropy', optimizer=tf.keras.optimizers.Adam(0.001, clipnorm=5.))
+    # model = KerasModel(keras_model)
 
     # Training
     if options.do_train:
@@ -275,17 +275,27 @@ if __name__ == '__main__':
         train_rdd = generate_input_rdd(train_examples, label_list, options.max_seq_length, tokenizer, "train")
         train_input_fn = bert_input_fn(train_rdd, options.max_seq_length, options.batch_size)
         train_rdd_bert = estimator.predict(train_input_fn).zip(train_rdd.map(lambda x: x[1]))
-        from bigdl.nn.criterion import TimeDistributedCriterion, ClassNLLCriterion
+        from bigdl.nn.criterion import TimeDistributedCriterion, ClassNLLCriterion, CrossEntropyCriterion
         from zoo.common import Sample
+        # from zoo.pipeline.api.keras.models import Sequential
+        # from zoo.pipeline.api.keras.layers import Bidirectional, LSTM, Dense
+        # model = Sequential()
+        # model.add(Bidirectional(LSTM(768, return_sequences=True), input_shape=(options.max_seq_length, 768)))
+        # model.add(Bidirectional(LSTM(768, return_sequences=True)))
+        # model.add(Dense(len(label_list), activation="softmax"))
         from zoo.pipeline.api.keras.models import Sequential
-        from zoo.pipeline.api.keras.layers import Bidirectional, LSTM, Dense
+        from zoo.pipeline.api.keras.layers import Bidirectional, LSTM, Dense, TimeDistributed
+
         model = Sequential()
         model.add(Bidirectional(LSTM(768, return_sequences=True), input_shape=(options.max_seq_length, 768)))
         model.add(Bidirectional(LSTM(768, return_sequences=True)))
         model.add(Dense(len(label_list), activation="softmax"))
+
         steps = len(train_examples) * options.nb_epoch // options.batch_size
         optimizer = AdamWeightDecay(lr=options.learning_rate, warmup_portion=0.1, total=steps)
+        # optimizer = Adam(lr=options.learning_rate)
         model.compile(optimizer=optimizer, loss=TimeDistributedCriterion(ClassNLLCriterion()))
+        # model.compile(optimizer=optimizer, loss=ClassNLLCriterion())
         model.set_gradient_clipping_by_l2_norm(1.0)
         train_dataset = train_rdd_bert.map(lambda x: Sample.from_ndarray(x[0], x[1]))
         train_start_time = time.time()
