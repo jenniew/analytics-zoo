@@ -19,10 +19,10 @@ package com.intel.analytics.zoo.pipeline.api.keras.python
 import java.util.{List => JList, Map => JMap}
 
 import com.intel.analytics.bigdl.{Criterion, Module}
-import com.intel.analytics.bigdl.dataset.{DataSet, LocalDataSet, MiniBatch}
+import com.intel.analytics.bigdl.dataset.{Sample => JSample, Identity => _, _}
 
 import scala.collection.JavaConverters._
-import com.intel.analytics.bigdl.optim.{_}
+import com.intel.analytics.bigdl.optim._
 import com.intel.analytics.bigdl.python.api.{EvaluatedResult, JTensor, Sample}
 import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.tensor.TensorNumericMath.TensorNumeric
@@ -42,14 +42,17 @@ import com.intel.analytics.zoo.pipeline.api.keras.optimizers.{Adam, AdamWeightDe
 import org.apache.spark.api.java.JavaRDD
 import com.intel.analytics.zoo.common.PythonZoo
 import com.intel.analytics.zoo.feature.text.TextSet
+import com.intel.analytics.zoo.feature.FeatureSet
 import com.intel.analytics.zoo.models.common.ZooModel
 import com.intel.analytics.zoo.models.seq2seq.{Bridge, RNNDecoder, RNNEncoder}
 import com.intel.analytics.zoo.pipeline.api.Net
 import com.intel.analytics.zoo.pipeline.api.keras.{metrics => zmetrics}
 import com.intel.analytics.zoo.pipeline.api.net.GraphNet
 
+import scala.collection.Iterator
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
+import scala.reflect.runtime.universe.typeOf
 
 object PythonZooKeras {
 
@@ -141,6 +144,17 @@ class PythonZooKeras[T: ClassTag](implicit ev: TensorNumeric[T]) extends PythonZ
     module.fit(trainData, nbEpoch, valData)
   }
 
+  def zooFit(
+              module: KerasNet[T],
+              x: FeatureSet[Sample],
+              batchSize: Int,
+              nbEpoch: Int,
+              validationData: FeatureSet[Sample]): Unit = {
+    val xFeatureSet = x->new SampleToJSample[T]()
+    val valFeatureSet = if (validationData != null) validationData -> new SampleToJSample[T]() else null
+    module.fit(xFeatureSet, batchSize, nbEpoch, valFeatureSet)
+  }
+
   private def processEvaluateResult(
     resultArray: Array[(ValidationResult, ValidationMethod[T])]): JList[Float] = {
     resultArray.map { result =>
@@ -172,7 +186,17 @@ class PythonZooKeras[T: ClassTag](implicit ev: TensorNumeric[T]) extends PythonZ
     processEvaluateResult(resultArray)
   }
 
-  def zooSetTensorBoard(
+
+  def zooEvaluate(
+                   module: KerasNet[T],
+                   x: FeatureSet[Sample],
+                   batchSize: Int): JList[Float] = {
+    val batchSet = x->new SampleToJSample[T] ->SampleToMiniBatch[T](batchSize)
+    val resultArray = module.evaluate(batchSet)
+    processEvaluateResult(resultArray)
+  }
+
+def zooSetTensorBoard(
       module: KerasNet[T],
       logDir: String,
       appName: String): Unit = {
@@ -1354,5 +1378,32 @@ class PythonZooKeras[T: ClassTag](implicit ev: TensorNumeric[T]) extends PythonZ
     weightDecay: Double = 0.01): AdamWeightDecay[T] = {
     new AdamWeightDecay[T](learningRate, warmupPortion, total, schedule, beta1, beta2,
       epsilon, weightDecay)
+  }
+}
+
+class SampleToJSample[T:ClassTag](implicit ev: TensorNumeric[T]) extends PythonZooKeras[T] with Transformer[Sample, JSample[T]] {
+
+  private val typeName = {
+    val cls = implicitly[ClassTag[T]].runtimeClass
+    cls.getSimpleName
+  }
+
+  override def apply(prev: Iterator[Sample]): Iterator[JSample[T]] = {
+    new Iterator[JSample[T]] {
+
+      override def hasNext: Boolean = prev.hasNext
+
+      override def next(): JSample[T] = {
+        if (prev.hasNext) {
+          val sample = prev.next()
+          require(sample.bigdlType == typeName,
+            s"record.bigdlType: ${sample.bigdlType} == typeName: ${typeName}")
+          JSample[T](sample.features.asScala.toArray.map(toTensor(_)),
+            sample.labels.asScala.toArray.map(toTensor(_)))
+        } else {
+          null
+        }
+      }
+    }
   }
 }

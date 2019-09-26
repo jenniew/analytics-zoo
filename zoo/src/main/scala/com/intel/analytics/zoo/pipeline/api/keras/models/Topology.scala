@@ -333,6 +333,16 @@ abstract class KerasNet[T](implicit val tag: ClassTag[T], implicit val ev: Tenso
   }
 
   /**
+    * Convert FeatureSet to DataSet of MiniBatch.
+    */
+  private def toDataSet(x: FeatureSet[Sample[T]], batchSize: Int): DataSet[MiniBatch[T]] = {
+    if (x != null) {
+      (x.toDataSet -> SampleToMiniBatch[T](batchSize))
+    }
+    else null
+  }
+
+  /**
    * Train a model for a fixed number of epochs on a DataSet.
    *
    * @param x Training dataset. If x is an instance of LocalDataSet, train in local mode.
@@ -487,6 +497,35 @@ abstract class KerasNet[T](implicit val tag: ClassTag[T], implicit val ev: Tenso
   }
 
   /**
+    * Train a model for a fixed number of epochs on FeatureSet.
+    *
+    * @param x Training FeatureSet.
+    * @param batchSize Number of samples per gradient update.
+    * @param nbEpoch Number of epochs to train.
+    * @param validationData Validation FeatureSet, or null if validation is not configured.
+    */
+  def fit(
+           x: FeatureSet[Sample[T]],
+           batchSize: Int,
+           nbEpoch: Int,
+           validationData: FeatureSet[Sample[T]])(implicit ev: TensorNumeric[T]): Unit = {
+    KerasUtils.validateBatchSize(batchSize)
+    val dataset = x.toDataSet
+
+    this.fit((dataset -> SampleToMiniBatch[T](batchSize)),
+      nbEpoch, toDataSet(validationData, batchSize))
+
+    dataset.toDistributed().unpersist()
+  }
+
+  def fit(
+           x: FeatureSet[Sample[T]],
+           batchSize: Int,
+           nbEpoch: Int)(implicit ev: TensorNumeric[T]): Unit = {
+    this.fit(x, batchSize, nbEpoch, null)
+  }
+
+  /**
    * Evaluate a model on given RDD.
    *
    * @param x Evaluation dataset, RDD of Sample.
@@ -544,6 +583,29 @@ abstract class KerasNet[T](implicit val tag: ClassTag[T], implicit val ev: Tenso
         evaluate(localSet)
     }
   }
+
+  /**
+    * Evaluate a model on FeatureSet.
+    *
+    * @param x Evaluation FeatureSet.
+    * @param batchSize Number of samples per batch.
+    */
+  def evaluate(x: FeatureSet[MiniBatch[T]]): Array[(ValidationResult, ValidationMethod[T])] = {
+    require(this.vMethods != null, "Evaluation metrics haven't been set yet")
+    x match {
+      case distributed: DistributedFeatureSet[MiniBatch[T]] =>
+        require(this.internalOptimizer != null &&
+          this.internalOptimizer.isInstanceOf[InternalDistriOptimizer[T]],
+          "internal distributed optimizer should exist")
+        val optimizer = this.internalOptimizer.asInstanceOf[InternalDistriOptimizer[T]]
+        val validationMap = optimizer.evaluate(distributed, this.vMethods)
+        val reverseValidationMap = for ((k,v) <- validationMap) yield (v, k)
+        reverseValidationMap.toArray
+      case _ => throw new IllegalArgumentException("Unsupported FeatureSet type.")
+        }
+
+    }
+
 
   def toModel(): Model[T]
 
