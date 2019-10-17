@@ -278,3 +278,23 @@ class RankHinge(LossFunction):
     """
     def __init__(self, margin=1.0, bigdl_type="float"):
         super(RankHinge, self).__init__(None, bigdl_type, float(margin))
+
+
+class TimeDistributedCriterion(LossFunction):
+    '''
+    This class is intended to support inputs with 3 or more dimensions.
+    Apply Any Provided Criterion to every temporal slice of an input.
+
+
+    :param criterion: embedded criterion
+    :param size_average: whether to divide the sequence length
+
+
+    >>> td = TimeDistributedCriterion(ClassNLLCriterion())
+    creating: createClassNLLCriterion
+    creating: createTimeDistributedCriterion
+    '''
+
+    def __init__(self, criterion, size_average=False, dimension=2, bigdl_type="float"):
+        super(TimeDistributedCriterion, self).__init__(
+            None, bigdl_type, criterion, size_average, dimension)

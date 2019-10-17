@@ -26,11 +26,9 @@ import com.intel.analytics.bigdl.optim._
 import com.intel.analytics.bigdl.python.api.{EvaluatedResult, JTensor, Sample}
 import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.tensor.TensorNumericMath.TensorNumeric
-import com.intel.analytics.bigdl.nn.InitializationMethod
-import com.intel.analytics.bigdl.nn.Container
-import com.intel.analytics.bigdl.nn.abstractnn.{AbstractModule, Activity}
+import com.intel.analytics.bigdl.nn.{Container, InitializationMethod, TimeDistributedCriterion, BatchNormalization => BNBatchNormalization}
+import com.intel.analytics.bigdl.nn.abstractnn.{AbstractModule, Activity, TensorCriterion}
 import com.intel.analytics.bigdl.nn.keras.{KerasLayer, KerasModel}
-import com.intel.analytics.bigdl.nn.{BatchNormalization => BNBatchNormalization}
 import com.intel.analytics.bigdl.utils.{Shape, Table}
 import com.intel.analytics.zoo.feature.image.ImageSet
 import com.intel.analytics.zoo.pipeline.api.autograd.{Constant, _}
@@ -1254,6 +1252,11 @@ def zooSetTensorBoard(
 
   def createZooKerasRankHinge(margin: Double = 1.0): RankHinge[T] = {
     RankHinge[T](margin)
+  }
+
+  def createZooKerasTimeDistributedCriterion(critrn: TensorCriterion[T],
+    sizeAverage: Boolean = false, dimension: Int = 2): TimeDistributedCriterion[T] = {
+    TimeDistributedCriterion[T](critrn, sizeAverage, dimension)
   }
 
   def createZooKerasMAE(): ValidationMethod[T] = {

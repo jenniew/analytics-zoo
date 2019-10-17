@@ -84,7 +84,8 @@ if __name__ == '__main__':
         train_rdd_bert = estimator.predict(train_input_fn).zip(train_rdd.map(lambda x: x[1]))
 
 
-        from bigdl.nn.criterion import TimeDistributedCriterion, ClassNLLCriterion, CrossEntropyCriterion
+        from bigdl.nn.criterion import ClassNLLCriterion, CrossEntropyCriterion
+        from zoo.pipeline.api.keras.objectives import TimeDistributedCriterion
         from zoo.common import Sample
         from zoo.pipeline.api.keras.models import Sequential
         from zoo.pipeline.api.keras.layers import Bidirectional, LSTM, Dense, Flatten
@@ -105,7 +106,8 @@ if __name__ == '__main__':
         steps = len(train_examples) * options.nb_epoch // options.batch_size
         optimizer = AdamWeightDecay(lr=options.learning_rate, warmup_portion=0.1, total=steps)
         # optimizer = Adam(lr=options.learning_rate)
-        model.compile(optimizer=optimizer, loss=TimeDistributedCriterion(ClassNLLCriterion()))
+        model.compile(optimizer=optimizer,
+                      loss=TimeDistributedCriterion(CrossEntropyCriterion(), size_average=False, dimension=1))
         # model.compile(optimizer=optimizer, loss=ClassNLLCriterion())
         model.set_gradient_clipping_by_l2_norm(1.0)
         train_rdd_bert = train_rdd_bert.map(lambda x: Sample.from_ndarray(x[0], x[1]))
