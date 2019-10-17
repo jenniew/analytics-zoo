@@ -36,7 +36,7 @@ import com.intel.analytics.zoo.pipeline.api.keras.layers.{KerasLayerWrapper, _}
 import com.intel.analytics.zoo.pipeline.api.keras.layers.utils.KerasUtils
 import com.intel.analytics.zoo.pipeline.api.keras.models.{KerasNet, Model, Sequential}
 import com.intel.analytics.zoo.pipeline.api.keras.objectives._
-import com.intel.analytics.zoo.pipeline.api.keras.optimizers.{Adam, AdamWeightDecay}
+import com.intel.analytics.zoo.pipeline.api.keras.optimizers.{Adam, AdamWeightDecay, PolyEpochDecay}
 import org.apache.spark.api.java.JavaRDD
 import com.intel.analytics.zoo.common.PythonZoo
 import com.intel.analytics.zoo.feature.text.TextSet
@@ -1381,6 +1381,10 @@ def zooSetTensorBoard(
     weightDecay: Double = 0.01): AdamWeightDecay[T] = {
     new AdamWeightDecay[T](learningRate, warmupPortion, total, schedule, beta1, beta2,
       epsilon, weightDecay)
+  }
+
+  def createZooKerasPolyEpochDecay(power: Double, maxEpochs: Int): PolyEpochDecay = {
+    PolyEpochDecay(power, maxEpochs)
   }
 }
 
