@@ -25,11 +25,16 @@ from optparse import OptionParser
 # from tensorflow.keras import Sequential
 # from tensorflow.keras.layers import Bidirectional, LSTM, Dense
 from bert_ner_utils import *
+
+from bigdl.nn.criterion import CrossEntropyCriterion
+from bigdl.optim.optimizer import Loss
+from zoo.pipeline.api.keras.objectives import TimeDistributedCriterion
+from zoo.common import Sample
 from zoo.common.nncontext import init_nncontext
-from zoo.tfpark.model import KerasModel
+from zoo.pipeline.api.keras.models import Model
+from zoo.pipeline.api.keras.layers import Bidirectional, LSTM, Dense, InputLayer, Input
 from zoo.tfpark.text.estimator import BERTFeatureExtractor, bert_input_fn
 from zoo.pipeline.api.keras.optimizers import AdamWeightDecay, Adam
-from zoo.pipeline.api.net import TFDataset
 from zoo.feature.common import *
 
 
@@ -48,6 +53,16 @@ def generate_input_rdd(examples, label_list, max_seq_length, tokenizer, type="tr
         return sc.parallelize(features).map(lambda x: x[0])
     else:
         return sc.parallelize(features)
+
+
+def build_model():
+    input1 = Input(shape=(options.max_seq_length, 768))
+    lstm1 = Bidirectional(LSTM(768, return_sequences=True))(input1)
+    lstm2 = Bidirectional(LSTM(768, return_sequences=True))(lstm1)
+    fc = Dense(len(label_list), activation="softmax")(lstm2)
+    model = Model(input1, fc)
+    model.summary()
+    return model
 
 
 if __name__ == '__main__':
@@ -75,45 +90,47 @@ if __name__ == '__main__':
     estimator = BERTFeatureExtractor(
         bert_config_file=os.path.join(options.bert_base_dir, "bert_config.json"),
         init_checkpoint=os.path.join(options.bert_base_dir, "bert_model.ckpt"))
+    model = build_model()
 
     # Training
     if options.do_train:
+        # prepare train data
         train_examples = processor.get_train_examples(options.data_dir)
         train_rdd = generate_input_rdd(train_examples, label_list, options.max_seq_length, tokenizer, "train")
         train_input_fn = bert_input_fn(train_rdd, options.max_seq_length, options.batch_size)
         train_rdd_bert = estimator.predict(train_input_fn).zip(train_rdd.map(lambda x: x[1]))
-
-
-        from bigdl.nn.criterion import ClassNLLCriterion, CrossEntropyCriterion
-        from zoo.pipeline.api.keras.objectives import TimeDistributedCriterion
-        from zoo.common import Sample
-        from zoo.pipeline.api.keras.models import Sequential
-        from zoo.pipeline.api.keras.layers import Bidirectional, LSTM, Dense, Flatten
-        # model = Sequential()
-        # model.add(Bidirectional(LSTM(768, return_sequences=True), input_shape=(options.max_seq_length, 768)))
-        # model.add(Bidirectional(LSTM(768, return_sequences=True)))
-        # model.add(Dense(len(label_list), activation="softmax"))
-        from zoo.pipeline.api.keras.models import Model
-        from zoo.pipeline.api.keras.layers import Bidirectional, LSTM, Dense, InputLayer, Input
-
-        input1 = Input(shape=(options.max_seq_length, 768))
-        lstm1 = Bidirectional(LSTM(768, return_sequences=True))(input1)
-        lstm2 = Bidirectional(LSTM(768, return_sequences=True))(lstm1)
-        fc = Dense(len(label_list), activation="softmax")(lstm2)
-        model = Model(input1, fc)
-        model.summary()
-
-        steps = len(train_examples) * options.nb_epoch // options.batch_size
-        optimizer = AdamWeightDecay(lr=options.learning_rate, warmup_portion=0.1, total=steps)
-        # optimizer = Adam(lr=options.learning_rate)
-        model.compile(optimizer=optimizer,
-                      loss=TimeDistributedCriterion(CrossEntropyCriterion(), size_average=False, dimension=1))
-        # model.compile(optimizer=optimizer, loss=ClassNLLCriterion())
-        model.set_gradient_clipping_by_l2_norm(1.0)
         train_rdd_bert = train_rdd_bert.map(lambda x: Sample.from_ndarray(x[0], x[1]))
         train_dataset = FeatureSet.rdd(train_rdd_bert, memory_type=options.mem_type)
+        # train_feature = sc.parallelize(np.random.random((20, 128, 768)))
+        # train_lable = sc.parallelize(np.random.randint(1, len(label_list), (20, 128, 1)))
+        # train_rdd = train_feature.zip(train_lable).map(lambda x: Sample.from_ndarray(x[0], x[1]))
+        # train_dataset = FeatureSet.rdd(train_rdd, memory_type=options.mem_type)
+
+        # prepare validation data
+        val_examples = processor.get_dev_examples(options.data_dir)
+        val_rdd = generate_input_rdd(val_examples, label_list, options.max_seq_length, tokenizer, "eval")
+        val_input_fn = bert_input_fn(val_rdd, options.max_seq_length, options.batch_size)
+        val_rdd_bert = estimator.predict(val_input_fn).zip(val_rdd.map(lambda x: x[1]))
+        val_rdd_bert = val_rdd_bert.map(lambda x: Sample.from_ndarray(x[0], x[1]))
+        val_dataset = FeatureSet.rdd(val_rdd_bert, memory_type=options.mem_type)
+
+        # eval_feature = sc.parallelize(np.random.random((20, 128, 768)))
+        # eval_lable = sc.parallelize(np.random.randint(1, len(label_list), (20, 128, 1)).astype("float32"))
+        # eval_rdd = eval_feature.zip(eval_lable).map(lambda x: Sample.from_ndarray(x[0], x[1]))
+        # eval_dataset = FeatureSet.rdd(eval_rdd, memory_type=options.mem_type)
+
+        steps = len(train_examples) * options.nb_epoch // options.batch_size
+        # optimizer = AdamWeightDecay(lr=options.learning_rate, warmup_portion=0.1, total=steps)
+        optimizer = Adam(lr=options.learning_rate)
+        model.compile(optimizer=optimizer,
+                      loss=TimeDistributedCriterion(CrossEntropyCriterion(), size_average=False, dimension=1),
+                      metrics=[Loss(TimeDistributedCriterion(CrossEntropyCriterion(), size_average=False, dimension=1))])
+        # model.compile(optimizer=optimizer, loss=ClassNLLCriterion())
+        model.set_gradient_clipping_by_l2_norm(1.0)
+        # train_rdd_bert = train_rdd.map(lambda x: Sample.from_ndarray(x[0], x[1]))
+
         train_start_time = time.time()
-        model.fit(train_dataset, nb_epoch=options.nb_epoch, batch_size=options.batch_size)
+        model.fit(train_dataset, nb_epoch=options.nb_epoch, batch_size=options.batch_size, validation_data=val_dataset)
         train_end_time = time.time()
         print("Train time: %s minutes" % ((train_end_time - train_start_time) / 60))
 
@@ -127,10 +144,11 @@ if __name__ == '__main__':
         # eval_rdd_bert = sc.parallelize(eval_rdd_bert.collect())
         # eval_rdd_bert = sc.parallelize(np.random.uniform(low=-50, high=13.3, size=(20, 128, 768)))
         eval_dataset = eval_rdd_bert.map(lambda x: Sample.from_ndarray(x[0], x[1]))
-        # eval_dataset = FeatureSet.rdd(eval_rdd_bert, memory_type=options.mem_type)
+        # eval_dataset = FeatureSet.rdd(eval_rdd, memory_type=options.mem_type)
         # model.evaluate(eval_dataset, batch_size=8)
         result = model.predict(eval_dataset)
         print(result.take(5))
+        # pred = result.collect()
         predictions = np.concatenate([np.argmax(r, axis=-1) for r in result.collect()])
         truths = np.concatenate([r[1] for r in eval_rdd.collect()])
         mask = np.concatenate([r[0]["input_mask"] for r in eval_rdd.collect()])
@@ -142,11 +160,14 @@ if __name__ == '__main__':
     if options.do_predict:
         test_examples = processor.get_test_examples(options.data_dir)
         test_rdd = generate_input_rdd(test_examples, label_list, options.max_seq_length, tokenizer, "test")
+        # print(test_rdd.take(1)[0].shape)
         test_input_fn = bert_input_fn(test_rdd, options.max_seq_length, options.batch_size)
         test_rdd_bert = estimator.predict(test_input_fn).zip(test_rdd.map(lambda x: x[1]))
-        eval_dataset = test_rdd_bert.map(lambda x: Sample.from_ndarray(x[0], x[1]))
-        result = model.predict(eval_dataset)
+        test_dataset = test_rdd_bert.map(lambda x: Sample.from_ndarray(x[0], x[1]))
+        a = test_dataset.take(2)
+
         pred_start_time = time.time()
+        predictions = model.predict(test_dataset)
         predictions.collect()
         pred_end_time = time.time()
         print("Inference time: %s minutes" % ((pred_end_time - pred_start_time) / 60))

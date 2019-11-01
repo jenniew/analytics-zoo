@@ -39,11 +39,9 @@ import scala.collection.mutable.ListBuffer
 import java.util.ArrayList
 import java.util.concurrent.{CopyOnWriteArrayList, TimeUnit}
 
-<<<<<<< HEAD
 import com.intel.analytics.bigdl.nn.StaticGraph
-=======
 import com.intel.analytics.bigdl.Module
->>>>>>> faf055103db83c9f7caf394600d62df2483a1173
+
 import org.apache.log4j.{Level, Logger}
 import org.tensorflow.{DataType, Graph, Session, Tensor => TTensor}
 
