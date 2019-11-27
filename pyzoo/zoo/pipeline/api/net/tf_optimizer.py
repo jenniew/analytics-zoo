@@ -492,7 +492,7 @@ class TFOptimizer:
     def from_loss(cls, loss, optim_method, session=None, val_outputs=None,
                   val_labels=None, val_method=None, val_split=0.0,
                   clip_norm=None, clip_value=None, metrics=None,
-                  tensor_with_value=None, **kwargs):
+                  tensor_with_value=None, model_dir=None, **kwargs):
         """
         Create a TFOptimizer from a TensorFlow loss tensor.
         The loss tensor must come from a TensorFlow graph that only takes TFDataset.tensors and
@@ -536,7 +536,7 @@ class TFOptimizer:
         return cls(*(args + [val_split]),
                    tensors_with_value=tensor_with_value,
                    clip_norm=clip_norm,
-                   clip_value=clip_value, metrics=metrics, **kwargs)
+                   clip_value=clip_value, metrics=metrics, model_dir=model_dir, **kwargs)
 
     @classmethod
     def from_keras(cls, keras_model, dataset, optim_method=None, val_spilt=0.0, **kwargs):
