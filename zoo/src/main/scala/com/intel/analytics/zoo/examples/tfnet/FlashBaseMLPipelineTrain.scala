@@ -12,6 +12,7 @@ import com.intel.analytics.bigdl.utils.Table
 import com.intel.analytics.zoo.common.{MaxEpoch, NNContext}
 import com.intel.analytics.zoo.feature.FeatureSet
 import com.intel.analytics.zoo.pipeline.api.net.{IdentityCriterion, TFTrainingHelper2}
+import com.intel.analytics.zoo.pipeline.api.net.TFOptimizer2
 import com.intel.analytics.zoo.pipeline.estimator.Estimator
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
@@ -62,25 +63,21 @@ object FlashBaseMLPipelineTrain {
 //    //    println(s"AVG time of pre-processing is ${(avg / 5) / 1.0e9}s")
 //    //    avg = 0L
 
-    val x_array = for (i <- 1 to 1000) yield Tensor[Float](Array(10,8)).rand()
-    val m_array = for (i <- 1 to 1000) yield Tensor[Float](Array(77,8)).rand()
-    val y_array = for (i <- 1 to 1000) yield Tensor[Float](Array(8)).rand()
-    val x_rdd = sparkContext.parallelize(x_array)
-    val m_rdd = sparkContext.parallelize(m_array)
-    val y_rdd = sparkContext.parallelize(y_array)
-    val sample_rdd = (x_rdd.zip(m_rdd).zip(y_rdd)).
-      map(tuple => (tuple._1._1, tuple._1._2, tuple._2)).
-      map(elem => ArraySample(Array[Tensor[Float]](elem._1, elem._2, elem._3), Tensor[Float]().resize(1).zero()))
-    val train_data = FeatureSet.rdd(sample_rdd)
+//    val x_array = for (i <- 1 to 1000) yield Tensor[Float](Array(10,8)).rand()
+//    val m_array = for (i <- 1 to 1000) yield Tensor[Float](Array(77,8)).rand()
+//    val y_array = for (i <- 1 to 1000) yield Tensor[Float](Array(8)).rand()
+//    val x_rdd = sparkContext.parallelize(x_array)
+//    val m_rdd = sparkContext.parallelize(m_array)
+//    val y_rdd = sparkContext.parallelize(y_array)
+//    val sample_rdd = (x_rdd.zip(m_rdd).zip(y_rdd)).
+//      map(tuple => (tuple._1._1, tuple._1._2, tuple._2)).
+//      map(elem => ArraySample(Array[Tensor[Float]](elem._1, elem._2, elem._3), Tensor[Float]().resize(1).zero()))
+//    val train_data = FeatureSet.rdd(sample_rdd)
 //    start = System.nanoTime()
-    val model = TFTrainingHelper2(tfNetPath)
-    val estimator = Estimator[Float](model, optimMethod = new Adam[Float](), modelDir = tfNetPath)
-    estimator.train(trainSet = train_data->SampleToMiniBatch(batchSize),
-      criterion = new IdentityCriterion(),
-      endTrigger = Some(MaxEpoch(10)),
-      checkPointTrigger =  None,
-      validationSet = null,
-      validationMethod = null )
+    val optimizer = new TFOptimizer2(tfNetPath, new Adam[Float](), trainRDD, batchSize)
+//    val model = TFTrainingHelper2(tfNetPath)
+//    val estimator = Estimator[Float](model, optimMethod = new Adam[Float](), modelDir = tfNetPath)
+    optimizer.optimize(MaxEpoch(10))
 
 
     //    val btfnet = ModelBroadcast[Float]().broadcast(sparkContext, TFNet(tfNetPath))

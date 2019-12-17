@@ -376,6 +376,72 @@ class TFModel(object):
 
         return TFModel(training_helper_layer, criterion, val_methods)
 
+    @staticmethod
+    def save_model_from_loss(loss, session=None, val_outputs=None,
+                  val_labels=None, val_method=None, metrics=None,
+                  tensor_with_value=None, model_dir=None, freeze=False, session_config=None,
+                  updates=None, **kwargs):
+
+        import tensorflow as tf
+        if session is None:
+            sess = tf.Session()
+            sess.run(tf.global_variables_initializer())
+        else:
+            sess = session
+        grads_vars = tf.train.GradientDescentOptimizer(0).compute_gradients(loss)
+        variables = []
+        grads = []
+        for (grad, var) in grads_vars:
+            if grad is not None:
+                variables.append(var)
+                grads.append(grad)
+
+        all_required_inputs = _find_placeholders([loss])
+        dataset = tf.get_collection(all_required_inputs[0].name)[0]
+
+        inputs = nest.flatten(dataset._original_tensors)
+
+        if val_method is not None:
+            val_methods = to_list(val_method)
+            if metrics is None:
+                metrics = {}
+
+            for i, method in enumerate(val_methods):
+                metrics['bigdl_metirc_' + str(i)] = BigDLMetric(method, val_outputs, val_labels)
+
+        if model_dir is None:
+            model_dir = tempfile.mkdtemp()
+        else:
+            if not os.path.isdir(model_dir):
+                os.makedirs(model_dir)
+
+        inputs, additional_values = TFModel._expand_inputs(inputs, tensor_with_value, loss)
+        session_config = TFModel._process_session_config(session_config)
+        grads = TFModel._process_grads(loss.graph, grads)
+
+        outputs, val_methods = TFModel._process_metrics(loss.graph, metrics, loss, inputs)
+
+        trainable_variables, trainable_variable_placeholders, trainable_assign, \
+        extra_variables, extra_variable_assign_placeholders, \
+        extra_variable_assign, update_op = \
+            TFModel._process_variables_for_unfreeze(loss.graph, variables, updates)
+
+        meta, saver = \
+            TFModel._save_to_dir_for_unfreeze(model_dir, sess, loss.graph,
+                                              outputs, inputs,
+                                              trainable_variables,
+                                              trainable_variable_placeholders,
+                                              trainable_assign,
+                                              extra_variables,
+                                              extra_variable_assign_placeholders,
+                                              extra_variable_assign,
+                                              grads, update_op, additional_values)
+
+        # save session config
+        with tf.gfile.GFile(os.path.join(model_dir, "session.meta"), "wb") as f:
+            f.write(session_config.SerializeToString())
+        # save validation method
+
 
 class TFOptimizer:
     def __init__(self, loss, optim_method,

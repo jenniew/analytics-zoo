@@ -16,9 +16,12 @@
 
 package com.intel.analytics.zoo.pipeline.api.net
 
+import com.intel.analytics.bigdl.dataset.{MiniBatch, Sample}
 import com.intel.analytics.bigdl.nn.abstractnn.{AbstractModule, Activity}
+import com.intel.analytics.bigdl.optim.{OptimMethod, Optimizer, Trigger}
 import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.utils.T
+import org.apache.spark.rdd.RDD
 import org.slf4j.LoggerFactory
 import org.tensorflow.DataType
 
@@ -303,4 +306,22 @@ case class TrainMeta2(inputs: Array[String],
                      updateOp: String,
                      defaultTensorValue: Array[Array[Float]])
 
+class TFOptimizer2(modelPath: String,
+                   optimMethod: OptimMethod[Float],
+                   x: RDD[Sample[Float]],
+                   batchSize: Int = 32) {
+  private val trainer: TFTrainingHelper2 = TFTrainingHelper2(modelPath)
+  private val optimizer: Optimizer[Float, MiniBatch[Float]] = {
+    val optimizer = Optimizer[Float](trainer, x, new IdentityCriterion(), batchSize)
+
+    optimizer.setOptimMethod(optimMethod)
+    optimizer
+  }
+
+  def optimize(endTrigger: Trigger = Trigger.maxEpoch(1)): Array[Tensor[Float]] = {
+    optimizer.setEndWhen(endTrigger)
+    optimizer.optimize()
+    trainer.parameters()._1
+  }
+}
 
