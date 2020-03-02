@@ -26,7 +26,7 @@ import com.intel.analytics.bigdl.optim._
 import com.intel.analytics.bigdl.python.api.{EvaluatedResult, JTensor, Sample}
 import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.tensor.TensorNumericMath.TensorNumeric
-import com.intel.analytics.bigdl.nn.{Container, InitializationMethod, TimeDistributedCriterion, BatchNormalization => BNBatchNormalization}
+import com.intel.analytics.bigdl.nn.{Container, InitializationMethod, StaticGraph, TimeDistributedCriterion, BatchNormalization => BNBatchNormalization}
 import com.intel.analytics.bigdl.nn.abstractnn.{AbstractModule, Activity, TensorCriterion}
 import com.intel.analytics.bigdl.nn.keras.{KerasLayer, KerasModel}
 import com.intel.analytics.bigdl.utils.{Shape, Table}
@@ -1385,6 +1385,10 @@ def zooSetTensorBoard(
 
   def createZooKerasPolyEpochDecay(power: Double, maxEpochs: Int): PolyEpochDecay = {
     PolyEpochDecay(power, maxEpochs)
+  }
+
+  def toGraph(model: Model[T]): StaticGraph[T] = {
+    model.labor.asInstanceOf[StaticGraph[T]]
   }
 }
 

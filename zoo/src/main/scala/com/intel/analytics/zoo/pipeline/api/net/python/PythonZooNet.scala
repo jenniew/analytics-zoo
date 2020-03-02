@@ -307,20 +307,12 @@ class PythonZooNet[T: ClassTag](implicit ev: TensorNumeric[T]) extends PythonZoo
     torchnet.savePytorch(path)
   }
 
-  def setInputFormats(graph: StaticGraph[T], inputFormat: JList[Int]): StaticGraph[T] = {
-//    val seq = asScalaIteratorConverter(inputFormat.iterator()).asScala.toSeq
-    val seq = inputFormat.asScala.toList
-//    val seq = Seq(inputFormat.get(0))
-    println("set input format", seq, seq(0))
-    graph.setInputFormats(seq)
-  }
-
-  def setOutputFormats(graph: StaticGraph[T], outputFormat: JList[Int]): StaticGraph[T] = {
-    //    val seq = asScalaIteratorConverter(outputFormat.iterator()).asScala.toSeq
-    val seq = outputFormat.asScala.toList
-    //    val seq = Seq(outputFormat.get(0))
-    println("set output format", seq, seq(0))
-    graph.setOutputFormats(seq)
-  }
+//  def setInputFormats(model: Model[T], inputFormat: JList[Int]): StaticGraph[T] = {
+//    model.setInputFormats(inputFormat.asScala.toList)
+//  }
+//
+//  def setOutputFormats(graph: StaticGraph[T], outputFormat: JList[Int]): StaticGraph[T] = {
+//    graph.setOutputFormats(outputFormat.asScala.toList)
+//  }
 
 }

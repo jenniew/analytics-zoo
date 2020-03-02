@@ -40,8 +40,10 @@ def remove_batch(shape):
     else:
         return list(shape[1:])
 
-def set_input_formats(model, input_formats):
-    callBigDlFunc("float", "setInputFormats", model, input_formats)
 
-def set_output_formats(model, output_formats):
-    callBigDlFunc("float", "setOutputFormats", model, output_formats)
+# def set_input_formats(model, input_formats):
+#     callBigDlFunc("float", "setInputFormats", model, input_formats)
+#
+#
+# def set_output_formats(model, output_formats):
+#     callBigDlFunc("float", "setOutputFormats", model, output_formats)

@@ -19,6 +19,7 @@ import sys
 from zoo.pipeline.api.utils import remove_batch
 from .engine.topology import KerasNet
 from bigdl.util.common import to_list, callBigDlFunc
+from bigdl.nn.layer import Model as BModel
 
 if sys.version >= '3':
     long = int
@@ -120,4 +121,13 @@ class Model(KerasNet):
         """
         model = Model([], [], jvalue=jvalue)
         model.value = jvalue
+        return model
+
+    def to_graph(self):
+        """
+        get BigDL graph model
+        :return: BigDL graph model
+        """
+        j_graph = callBigDlFunc(self.bigdl_type, "toGraph", self.value)
+        model = BModel.from_jvalue(j_graph)
         return model

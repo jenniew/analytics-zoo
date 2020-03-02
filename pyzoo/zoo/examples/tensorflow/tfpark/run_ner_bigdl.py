@@ -27,7 +27,8 @@ from optparse import OptionParser
 from bert_ner_utils import *
 
 from bigdl.nn.criterion import CrossEntropyCriterion
-from bigdl.optim.optimizer import Loss
+from bigdl.optim.optimizer import Loss, Optimizer, MaxEpoch, EveryEpoch
+
 from zoo.pipeline.api.keras.objectives import TimeDistributedCriterion
 from zoo.common import Sample
 from zoo.common.nncontext import init_nncontext
@@ -36,6 +37,7 @@ from zoo.pipeline.api.keras.layers import Bidirectional, LSTM, Dense, InputLayer
 from zoo.tfpark.text.estimator import BERTFeatureExtractor, bert_input_fn
 from zoo.pipeline.api.keras.optimizers import AdamWeightDecay, Adam
 from zoo.feature.common import *
+
 
 
 def feature_to_input(feature):
@@ -62,6 +64,10 @@ def build_model():
     fc = Dense(len(label_list), activation="softmax")(lstm2)
     model = Model(input1, fc)
     model.summary()
+    if get_bigdl_engine_type() == "MklDnn":
+        model = model.to_graph()
+        model.set_input_formats([27])
+        model.set_output_formats([27])
     return model
 
 
@@ -100,7 +106,7 @@ if __name__ == '__main__':
         train_input_fn = bert_input_fn(train_rdd, options.max_seq_length, options.batch_size)
         train_rdd_bert = estimator.predict(train_input_fn).zip(train_rdd.map(lambda x: x[1]))
         train_rdd_bert = train_rdd_bert.map(lambda x: Sample.from_ndarray(x[0], x[1]))
-        train_dataset = FeatureSet.rdd(train_rdd_bert, memory_type=options.mem_type)
+        # train_dataset = FeatureSet.rdd(train_rdd_bert, memory_type=options.mem_type)
         # train_feature = sc.parallelize(np.random.random((20, 128, 768)))
         # train_lable = sc.parallelize(np.random.randint(1, len(label_list), (20, 128, 1)))
         # train_rdd = train_feature.zip(train_lable).map(lambda x: Sample.from_ndarray(x[0], x[1]))
@@ -112,7 +118,7 @@ if __name__ == '__main__':
         val_input_fn = bert_input_fn(val_rdd, options.max_seq_length, options.batch_size)
         val_rdd_bert = estimator.predict(val_input_fn).zip(val_rdd.map(lambda x: x[1]))
         val_rdd_bert = val_rdd_bert.map(lambda x: Sample.from_ndarray(x[0], x[1]))
-        val_dataset = FeatureSet.rdd(val_rdd_bert, memory_type=options.mem_type)
+        # val_dataset = FeatureSet.rdd(val_rdd_bert, memory_type=options.mem_type)
 
         # eval_feature = sc.parallelize(np.random.random((20, 128, 768)))
         # eval_lable = sc.parallelize(np.random.randint(1, len(label_list), (20, 128, 1)).astype("float32"))
@@ -122,16 +128,35 @@ if __name__ == '__main__':
         steps = len(train_examples) * options.nb_epoch // options.batch_size
         # optimizer = AdamWeightDecay(lr=options.learning_rate, warmup_portion=0.1, total=steps)
         optimizer = Adam(lr=options.learning_rate)
-        model.compile(optimizer=optimizer,
+        if get_bigdl_engine_type() == "MklDnn":
+            optimizer = Optimizer(
+                model= model,
+                training_rdd=train_rdd_bert,
+                criterion=TimeDistributedCriterion(CrossEntropyCriterion(), size_average=False, dimension=1),
+                optim_method=optimizer,
+                end_trigger=MaxEpoch(options.nb_epoch),
+                batch_size=options.batch_size)
+            optimizer.set_validation(
+                batch_size=options.batch_size,
+                val_rdd=val_rdd_bert,
+                trigger=EveryEpoch(),
+                val_method=[Loss(TimeDistributedCriterion(CrossEntropyCriterion(), size_average=False, dimension=1))]
+            )
+            optimizer.set_gradclip_l2norm(1.0)
+            train_start_time = time.time()
+            optimizer.optimize()
+            train_end_time = time.time()
+        else:
+            model.compile(optimizer=optimizer,
                       loss=TimeDistributedCriterion(CrossEntropyCriterion(), size_average=False, dimension=1),
                       metrics=[Loss(TimeDistributedCriterion(CrossEntropyCriterion(), size_average=False, dimension=1))])
-        # model.compile(optimizer=optimizer, loss=ClassNLLCriterion())
-        model.set_gradient_clipping_by_l2_norm(1.0)
+            # model.compile(optimizer=optimizer, loss=ClassNLLCriterion())
+            model.set_gradient_clipping_by_l2_norm(1.0)
         # train_rdd_bert = train_rdd.map(lambda x: Sample.from_ndarray(x[0], x[1]))
 
-        train_start_time = time.time()
-        model.fit(train_dataset, nb_epoch=options.nb_epoch, batch_size=options.batch_size, validation_data=val_dataset)
-        train_end_time = time.time()
+            train_start_time = time.time()
+            model.fit(train_dataset, nb_epoch=options.nb_epoch, batch_size=options.batch_size, validation_data=val_dataset)
+            train_end_time = time.time()
         print("Train time: %s minutes" % ((train_end_time - train_start_time) / 60))
 
     # Evaluation
