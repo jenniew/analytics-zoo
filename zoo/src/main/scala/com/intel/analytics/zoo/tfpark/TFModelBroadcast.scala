@@ -27,7 +27,7 @@ import com.intel.analytics.bigdl.nn.tf.Const
 import com.intel.analytics.bigdl.tensor.{QuantizedTensor, QuantizedType, Storage, Tensor}
 import com.intel.analytics.bigdl.tensor.TensorNumericMath.{NumericWildcard, TensorNumeric}
 import com.intel.analytics.bigdl.nn.Module
-import com.intel.analytics.bigdl.optim.DistriOptimizer.CacheV1
+import com.intel.analytics.bigdl.optim.DistriOptimizer.{Cache, CacheV1}
 import com.intel.analytics.bigdl.utils.Engine
 import com.intel.analytics.bigdl.utils.intermediate.IRGraph
 import com.intel.analytics.zoo.pipeline.api.keras.layers.utils.EngineRef
@@ -389,6 +389,47 @@ object Util {
       }
     } else {
       null
+    }
+  }
+
+  def collectExtraParameters[T: ClassTag]
+  (models: RDD[CacheV1[T]], trainingModel: Module[T], maxSize: Int)(implicit ev: TensorNumeric[T])
+  : Array[Tensor[T]] = {
+    println(s"max size is : ${maxSize}")
+    val totalElements = models.map(_.localModels.head.getExtraParameter().map(_.nElement()).
+      reduce(_+_)).first()
+    if (totalElements < maxSize) {
+      println(s"total elements: ${totalElements}")
+      return models.map(_.localModels.head.getExtraParameter()).first()
+    } else {
+      val individualLength = models.map(_.localModels.head.getExtraParameter().
+        map(_.nElement())).first()
+      val extraParamLength = models.map(_.localModels.head.getExtraParameter().length).first()
+      val extraState = new Array[Tensor[T]](extraParamLength)
+      (0 until extraParamLength).foreach(i =>
+        if (individualLength(i) < maxSize) {
+          println(s"individual length ${individualLength(i)} less than maxsize")
+          extraState(i) = models.map(_.localModels.head.getExtraParameter()(i)).first()
+        } else {
+          println(s"individual length of element ${i} ${individualLength(i)} more than maxsize")
+          val numChucks = if (individualLength(i) % maxSize == 0) {
+            individualLength(i) / maxSize
+          } else {
+            individualLength(i) / maxSize + 1
+          }
+          val storage = Storage(new Array[T](individualLength(i)))
+          for (j <- 0 until numChucks) {
+            val partArray = models.map(_.localModels.head.getExtraParameter()(i).storage().array()
+              .slice(j * maxSize, math.min(maxSize * (j + 1), individualLength(i)))).first()
+            System.arraycopy(partArray, 0, storage.array(), j * maxSize, partArray.length)
+            println(s"copy ${partArray.length} elements to parameter $i}")
+          }
+          val trainParam = trainingModel.getExtraParameter()(i)
+          extraState(i) = Tensor(storage, trainParam.storageOffset(),
+            trainParam.size, trainParam.stride())
+        }
+      )
+      extraState
     }
   }
 

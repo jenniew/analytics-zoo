@@ -51,6 +51,7 @@ import com.intel.analytics.zoo.pipeline.api.keras.layers.utils._
 import com.intel.analytics.zoo.pipeline.api.net.{NetUtils, TorchModel, TorchNet}
 import com.intel.analytics.zoo.pipeline.estimator.{AbstractEstimator, ConstantClipping, GradientClipping, L2NormClipping}
 import com.intel.analytics.zoo.tfpark.{TFTrainingHelper, TFTrainingHelperV2}
+import com.intel.analytics.zoo.tfpark.Util._
 import org.apache.commons.lang.exception.ExceptionUtils
 import org.apache.commons.lang3.SerializationUtils
 import org.apache.hadoop.conf.Configuration
@@ -1809,11 +1810,13 @@ object InternalDistriOptimizer {
           Iterator.single(1)
         }).reduce(_ + _)
 
-        val extraParamLength = models.map(_.localModels.head.getExtraParameter().length).first()
-        val extraState = new Array[Tensor[T]](extraParamLength)
-        (0 until extraParamLength).foreach(i =>
-          extraState(i) = models.map(_.localModels.head.getExtraParameter()(i)).first()
-        )
+//        val extraParamLength = models.map(_.localModels.head.getExtraParameter().length).first()
+//        val extraState = new Array[Tensor[T]](extraParamLength)
+//        (0 until extraParamLength).foreach(i =>
+//          extraState(i) = models.map(_.localModels.head.getExtraParameter()(i)).first()
+//        )
+        val extraState = collectExtraParameters[T](models, trainingModel, maxSize = Integer.MAX_VALUE / 8)
+        trainingModel.setExtraParameter(extraState)
 //        val extraState = models.map(_.localModels.head.getExtraParameter()).first()
         trainingModel.setExtraParameter(extraState)
 
