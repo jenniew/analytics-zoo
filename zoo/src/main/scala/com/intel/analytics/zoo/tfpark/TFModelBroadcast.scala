@@ -398,8 +398,9 @@ object Util {
     println(s"max size is : ${maxSize}")
     val totalElements = models.map(_.localModels.head.getExtraParameter().map(_.nElement()).
       reduce(_+_)).first()
+    println(s"total elements: ${totalElements}")
     if (totalElements < maxSize) {
-      println(s"total elements: ${totalElements}")
+      println(s"total elements less than maxSize")
       return models.map(_.localModels.head.getExtraParameter()).first()
     } else {
       val individualLength = models.map(_.localModels.head.getExtraParameter().
@@ -408,10 +409,10 @@ object Util {
       val extraState = new Array[Tensor[T]](extraParamLength)
       (0 until extraParamLength).foreach(i =>
         if (individualLength(i) < maxSize) {
-          println(s"individual length ${individualLength(i)} less than maxsize")
+          println(s"individual length of parameter ${i}:  ${individualLength(i)} is less than maxsize")
           extraState(i) = models.map(_.localModels.head.getExtraParameter()(i)).first()
         } else {
-          println(s"individual length of element ${i} ${individualLength(i)} more than maxsize")
+          println(s"individual length of parameter ${i}:  ${individualLength(i)} is more than maxsize")
           val numChucks = if (individualLength(i) % maxSize == 0) {
             individualLength(i) / maxSize
           } else {
