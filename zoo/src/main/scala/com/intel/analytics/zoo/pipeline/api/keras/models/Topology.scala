@@ -1816,7 +1816,7 @@ object InternalDistriOptimizer {
 //          extraState(i) = models.map(_.localModels.head.getExtraParameter()(i)).first()
 //        )
 //        val extraState = collectExtraParameters[T](models, trainingModel, maxSize = Integer.MAX_VALUE / 2)
-        val extraState = collectExtraParameters[T](models, trainingModel, maxSize = Integer.MAX_VALUE - 8)
+        val extraState = collectExtraParameters[T](models, trainingModel, maxSize = (Integer.MAX_VALUE - 8) / 4)
         trainingModel.setExtraParameter(extraState)
 //        val extraState = models.map(_.localModels.head.getExtraParameter()).first()
         trainingModel.setExtraParameter(extraState)
