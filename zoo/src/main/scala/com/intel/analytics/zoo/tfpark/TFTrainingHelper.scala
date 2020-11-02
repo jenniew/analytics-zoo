@@ -189,6 +189,7 @@ private[zoo] class TFTrainingHelper protected(val graphRunner: GraphRunner,
 
   def restoreFromCheckpoint(): Unit = {
     graphRunner.restoreFromFile(checkpointPath)
+    println(s"checkpoint location: ${checkpointPath}")
     if (weights.length > 0) {
       getVariableFromTF(weights, variableNames = variables)
     }

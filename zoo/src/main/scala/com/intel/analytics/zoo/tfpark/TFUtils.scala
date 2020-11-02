@@ -92,7 +92,10 @@ object TFUtils {
 
   private[zoo] def tf2bigdl(t: TTensor[_], output: Tensor[_]) = {
     val shape = t.shape().map(_.toInt)
+    println(s"tensorflow tensor shape: ${shape.mkString(",")}")
     output.resize(shape)
+    println(s"output tensor shape: ${output.size.mkString(",")}")
+    println(s"output tesnor nElements: ${output.nElement()}")
     val dataType = t.dataType()
 
     val numericDataTypes = Set(DataType.FLOAT,
@@ -119,6 +122,9 @@ object TFUtils {
       dataType match {
         case DataType.FLOAT =>
           val outputTensor = output.asInstanceOf[Tensor[Float]]
+          if (outputTensor.storage().array() == null) {
+            println("output tensor storage array is null")
+          }
           val buffer = FloatBuffer.wrap(
             outputTensor.storage().array(),
             outputTensor.storageOffset() - 1,
