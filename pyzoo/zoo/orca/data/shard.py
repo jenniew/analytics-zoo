@@ -51,6 +51,11 @@ class XShards(object):
         pass
 
     @classmethod
+    def load_sequence(cls, path):
+        sc = init_nncontext()
+        return SparkXShards(sc.sequenceFile(path).map(lambda t: t[1]))
+
+    @classmethod
     def load_pickle(cls, path, minPartitions=None):
         """
         Load XShards from pickle files.
@@ -430,6 +435,10 @@ class SparkXShards(XShards):
     def __len__(self):
         return self.rdd.map(lambda data: len(data) if hasattr(data, '__len__') else 1)\
             .reduce(lambda l1, l2: l1 + l2)
+
+    def save_as_sequence(self, path):
+        self.rdd.map(lambda x: (None, x)).saveAsSequenceFile()
+        return self
 
     def save_pickle(self, path, batchSize=10):
         """

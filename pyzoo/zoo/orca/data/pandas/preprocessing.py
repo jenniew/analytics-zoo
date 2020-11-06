@@ -66,24 +66,41 @@ def read_file_spark(file_path, file_type, **kwargs):
         num_files = len(file_paths)
         total_cores = node_num * core_num
         num_partitions = num_files if num_files < total_cores else total_cores
-        rdd = sc.parallelize(file_paths, num_partitions)
+        # rdd = sc.parallelize(file_paths, num_partitions)
 
-        if prefix == "hdfs":
-            pd_rdd = rdd.mapPartitions(
-                lambda iter: read_pd_hdfs_file_list(iter, file_type, **kwargs))
-        elif prefix == "s3":
-            pd_rdd = rdd.mapPartitions(
-                lambda iter: read_pd_s3_file_list(iter, file_type, **kwargs))
-        else:
-            def loadFile(iterator):
-                dfs = []
-                for x in iterator:
-                    df = read_pd_file(x, file_type, **kwargs)
+        # if prefix == "hdfs":
+        #     pd_rdd = rdd.mapPartitions(
+        #         lambda iter: read_pd_hdfs_file_list(iter, file_type, **kwargs))
+        # elif prefix == "s3":
+        #     pd_rdd = rdd.mapPartitions(
+        #         lambda iter: read_pd_s3_file_list(iter, file_type, **kwargs))
+        # else:
+        #     def loadFile(iterator):
+        #         dfs = []
+        #         for x in iterator:
+        #             df = read_pd_file(x, file_type, **kwargs)
+        #             dfs.append(df)
+        #         import pandas as pd
+        #         return [pd.concat(dfs)]
+        #
+        #     pd_rdd = rdd.mapPartitions(loadFile)
+        rdd = sc.wholeTextFiles(file_path, num_partitions)
+
+        def loadFile(iterator):
+            dfs = []
+            import pandas as pd
+            from io import StringIO
+            for x in iterator:
+                if file_type == "csv":
+                    df = pd.read_csv(StringIO(x[1]), **kwargs)
                     dfs.append(df)
-                import pandas as pd
-                return [pd.concat(dfs)]
+                elif file_type == "json":
+                    df = pd.read_json(StringIO(x[1]), **kwargs)
+                    dfs.append(df)
+            return [pd.concat(dfs)]
 
-            pd_rdd = rdd.mapPartitions(loadFile)
+        pd_rdd = rdd.mapPartitions(loadFile)
+        return SparkXShards(pd_rdd)
     else:  # Spark backend; spark.read.csv/json accepts a folder path as input
         assert file_type == "json" or file_type == "csv", \
             "Unsupported file type: %s. Only csv and json files are supported for now" % file_type
