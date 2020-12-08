@@ -16,7 +16,7 @@
 
 package com.intel.analytics.zoo.tfpark
 
-import java.io.{IOException, ObjectInputStream, ObjectOutputStream, InvalidClassException, InputStream, ObjectStreamClass}
+import java.io._
 
 import com.intel.analytics.bigdl.Module
 import com.intel.analytics.bigdl.models.utils.{CachedModels, ModelBroadcast, ModelInfo}
@@ -30,6 +30,7 @@ import com.intel.analytics.bigdl.nn.Module
 import com.intel.analytics.bigdl.optim.DistriOptimizer.CacheV1
 import com.intel.analytics.bigdl.utils.Engine
 import com.intel.analytics.bigdl.utils.intermediate.IRGraph
+import com.intel.analytics.zoo.common.CheckedObjectInputStream
 import com.intel.analytics.zoo.pipeline.api.keras.layers.utils.EngineRef
 import com.intel.analytics.zoo.tfpark.Util._
 import org.apache.commons.lang3.SerializationUtils
@@ -160,7 +161,8 @@ private[zoo] class ModelInfo[T: ClassTag](val uuid: String, @transient var model
   @throws(classOf[IOException])
   private def readObject(in: ObjectInputStream): Unit = {
     in.defaultReadObject()
-    model = in.readObject().asInstanceOf[Module[T]]
+    val ois = new CheckedObjectInputStream(classOf[Module[T]], in)
+    model = ois.readObject().asInstanceOf[Module[T]]
     CachedModels.add(uuid, model)
   }
 }
