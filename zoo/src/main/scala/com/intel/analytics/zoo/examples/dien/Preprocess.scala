@@ -168,7 +168,7 @@ object Preprocess {
   }
 
 
-  def createHistorySeq(df: DataFrame): DataFrame = {
+  def createHistorySeq(df: DataFrame, maxLen: Int=100): DataFrame = {
 
     //    def itemSeqUdf = {
     //      val func = (itemCollect: Seq[Row]) =>
@@ -189,8 +189,10 @@ object Preprocess {
         GroupedIndex(asin_index = full_rows(x).getAs[Int](0),
           cat_index = full_rows(x).getAs[Int](1),
           unixReviewTime = full_rows(x).getAs[Int](2),
-          asin_history = full_rows.slice(0, x).map(row => row.getAs[Int](0)),
-          cat_history = full_rows.slice(0, x).map(row => row.getAs[Int](0)))).filter(_.asin_history.length > 0)
+          asin_history = if (x <= maxLen) full_rows.slice(0, x).map(row => row.getAs[Int](0))
+          else full_rows.slice(x-maxLen, x).map(row => row.getAs[Int](0)),
+          cat_history = if (x <= maxLen) full_rows.slice(0, x).map(row => row.getAs[Int](1))
+          else full_rows.slice(x-maxLen, x).map(row => row.getAs[Int](1)))).filter(_.asin_history.length > 0)
     })
 
     df.groupBy("uid")
@@ -275,6 +277,7 @@ object Preprocess {
     val invalidCatID = meta_df.select("cat_id").distinct().count().toInt
 
     val itemSize = meta_df.select("item_id").distinct().count().toInt
+    println(s"item size is: ${itemSize}")
 
     // read review data
     val review_path = "/home/jwang/git/recommendation_jennie/public_dien/reviews_10000_lines.json"
@@ -290,6 +293,9 @@ object Preprocess {
 
     review_df = userIndexer.fit(review_df).transform(review_df).drop("reviewerID")
     review_df = review_df.withColumn("uid",col("uid").cast(IntegerType))
+
+    val userSize = review_df.select("uid").distinct().count()
+    println(s"user size is: ${userSize}")
 
     // change item in review df to item id
     review_df = itemModel.transform(review_df).withColumn("item_id",col("item_id").cast(IntegerType)).drop("asin")
@@ -307,7 +313,7 @@ object Preprocess {
     review_df2.show()
 
     // join review df and meta data
-    var review_df3 = review_df.join(meta_df, Seq("item_id"), "left")
+    var review_df3 = review_df.join(meta_df, Seq("item_id"), "inner")
     review_df3 = review_df3.na.fill(invalidCatID, Seq("cat_id"))
     review_df3.show()
 
