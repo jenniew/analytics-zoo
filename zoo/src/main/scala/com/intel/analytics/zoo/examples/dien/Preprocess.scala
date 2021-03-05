@@ -31,56 +31,7 @@ object Preprocess {
 
   }
 
-//
-  def addNeg(df: DataFrame, itemSize: Int, userID: String="uid", itemID:String="item_id",
-             label:String="label", negNum:Int=1): DataFrame = {
-    val sqlContext = df.sqlContext
-    import sqlContext.implicits._
-    val combinedDF = df.rdd.flatMap(row => {
-      val result = new Array[Tuple3[Int, Int, Int]](negNum + 1)
-      val r = new Random()
-      for (i <- 0 until negNum) {
-        var neg = 0
-        do {
-          neg = r.nextInt(itemSize)
-        } while (neg == row.getAs[Int](itemID))
-
-        result(i) = (row.getAs[Int](userID), neg, 0)
-      }
-      result(negNum) = (row.getAs[Int](userID), row.getAs(itemID), 1)
-      result
-
-    }).toDF(userID, itemID, label)
-
-    combinedDF
-  }
-
-  def addNegExcludeClickedItemList(df: DataFrame, itemSize: Int, userItemListDF: DataFrame,
-                                   userID: String="uid", itemID:String="item_id", label:String="label",
-                                   negNum:Int=1): DataFrame = {
-    val sqlContext = df.sqlContext
-    import sqlContext.implicits._
-    val combinedDF = df.join(userItemListDF, "uid").rdd.flatMap(row => {
-      val itemList = row.getAs[Seq[Int]]("itemList")
-      val result = new Array[Tuple3[Int, Int, Int]](negNum + 1)
-      val r = new Random()
-      for (i <- 0 until negNum) {
-        var neg = 0
-        do {
-          neg = r.nextInt(itemSize)
-        } while (itemList.contains((neg)))
-
-        result(i) = (row.getAs[Int](userID), neg, 0)
-      }
-      result(negNum) = (row.getAs[Int](userID), row.getAs(itemID), 1)
-      result
-
-    }).toDF(userID, itemID, label)
-
-    combinedDF
-  }
-
-  def addNegSamplingForSequence(df: DataFrame, itemSize: Int, userID: String="uid", itemID:String="item_id",
+  def addNegSampling(df: DataFrame, itemSize: Int, userID: String="uid", itemID:String="item_id",
              label:String="label", negNum:Int=1): DataFrame = {
     val sqlContext = df.sqlContext
     val colNames = df.columns
@@ -168,19 +119,7 @@ object Preprocess {
   }
 
 
-  def createHistorySeq(df: DataFrame, maxLen: Int=100): DataFrame = {
-
-    //    def itemSeqUdf = {
-    //      val func = (itemCollect: Seq[Row]) =>
-    //        itemCollect.sortBy(x => x.getAs[Long](1)).map(x => x.getAs[Long](0))
-    //      udf(func)
-    //    }
-    //
-    //    def catSeqUdf = {
-    //      val func = (catCollect: Seq[Row]) =>
-    //        catCollect.sortBy(x => x.getAs[Long](1)).map(x => x.getAs[WrappedArray[Long]](0)(0))
-    //      udf(func)
-    //    }
+  def createHistorySeq(df: DataFrame, minLen: Int=0, maxLen: Int=100): DataFrame = {
 
     val asinUdf = udf((asin_collect: Seq[Row]) => {
       val full_rows = asin_collect.sortBy(x => x.getAs[Int](2)).toArray
@@ -192,7 +131,7 @@ object Preprocess {
           asin_history = if (x <= maxLen) full_rows.slice(0, x).map(row => row.getAs[Int](0))
           else full_rows.slice(x-maxLen, x).map(row => row.getAs[Int](0)),
           cat_history = if (x <= maxLen) full_rows.slice(0, x).map(row => row.getAs[Int](1))
-          else full_rows.slice(x-maxLen, x).map(row => row.getAs[Int](1)))).filter(_.asin_history.length > 0)
+          else full_rows.slice(x-maxLen, x).map(row => row.getAs[Int](1)))).filter(_.asin_history.length > minLen)
     })
 
     df.groupBy("uid")
@@ -309,7 +248,8 @@ object Preprocess {
     review_df1.show()
 
     // add negative sampling excluding itemlist for each user
-    val review_df2 = addNegExcludeClickedItemList(review_df, itemSize, userItemListDF, negNum = 5)
+//    val review_df2 = addNegExcludeClickedItemList(review_df, itemSize, userItemListDF, negNum = 5)
+    val review_df2 = addNegExcludeClickedItemList(review_df, itemSize, negNum = 1)
     review_df2.show()
 
     // join review df and meta data
@@ -322,12 +262,13 @@ object Preprocess {
     review_df3.show()
 
     // add negtive sample
-    review_df3 = addNegSamplingForSequence(review_df3, itemSize, negNum = 1)
+    review_df3 = addNegSampling(review_df3, itemSize, negNum = 1)
     review_df3.show()
 
     // add negtive history
     review_df3 = addNegHistorySequence(review_df3, itemSize, itemCatMap, 5)
     review_df3.show()
+    review_df3.count()
   }
 
 }
