@@ -188,6 +188,17 @@ def init_orca_context(cluster_mode="local", cores=2, memory="2g", num_nodes=1,
     elif cluster_mode == "local":
         assert num_nodes == 1, "For Spark local mode, num_nodes should be 1"
         os.environ["SPARK_DRIVER_MEMORY"] = memory
+        if 'PYSPARK_SUBMIT_ARGS' in os.environ:
+            submit_args = os.environ['PYSPARK_SUBMIT_ARGS']
+            start = submit_args.find('pyspark-shell')
+            submit_args = '{}--driver-memory {} {}'.format(submit_args[:start],
+                                                               memory,
+                                                               submit_args[start:])
+        else:
+            submit_args = " --driver-memory " + memory + " pyspark-shell "
+        print("pyspark_submit_args is: {}".format(submit_args))
+        os.environ['PYSPARK_SUBMIT_ARGS'] = submit_args
+
         if "python_location" in kwargs:
             spark_args["python_location"] = kwargs["python_location"]
         from zoo import init_spark_on_local
