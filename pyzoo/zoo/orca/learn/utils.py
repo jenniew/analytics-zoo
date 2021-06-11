@@ -311,3 +311,16 @@ def maybe_dataframe_to_xshards(data, validation_data, feature_cols, label_cols, 
 
 def bigdl_metric_results_to_dict(results):
     return dict([(r.method, r.result) for r in results])
+
+
+def standarize_xshards(data_shard, val_data_shard=None):
+    def standardrize_label(dic):
+        return {'x': dic['x'],
+                'y': np.expand_dims(dic['y'], axis=-1) if dic['y'].ndim == 1 else dic['y']
+                }
+
+    data_shard = data_shard.transform_shard(standardrize_label)
+    if val_data_shard:
+        val_data_shard = val_data_shard.transform_shard(standardrize_label)
+        return data_shard, val_data_shard
+    return data_shard
